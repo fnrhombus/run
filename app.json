@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "run@fnrhombus",
-    "slug": "run@fnrhombus",
+    "name": "run",
+    "slug": "run",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "runfnrhombus",
+    "scheme": "run",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
@@ -34,7 +34,9 @@
             "imageWidth": 76
           }
         }
-      ]
+      ],
+      "react-native-ble-plx",
+      "expo-build-properties"
     ],
     "experiments": {
       "typedRoutes": true,

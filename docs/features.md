@@ -202,6 +202,15 @@ concentration correlates with the runner's physiology and performance.
   F2). Worth a gentle caution in heat/high-concentration conditions. This is a
   personal tracking aid, **not medical advice**, and doesn't replace a doctor.
 
+**Personal observation (user, to test against data — not assume):** the user
+reports that during exertion the effort→HR relationship feels *unchanged* on
+vs. off the drug; what differs is **baseline arousal/excitability at rest**
+(harder to relax, and anecdotally a slightly *higher* resting HR during multi-
+week abstinence). Hypothesis to validate: medication mainly shifts the resting/
+arousal baseline, not the effort→HR slope. If true, F2 should let concentration
+modulate a resting/arousal term rather than rescaling the whole HR-effort curve.
+Treat as a hypothesis to confirm from the runner's own data, not a fixed prior.
+
 **Open questions:**
   - Which formulation(s) does the user take? (drives the model choice)
   - Sensitive health data — storage/privacy handling (same concern as F3 diet).

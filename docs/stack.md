@@ -6,9 +6,10 @@ captures the preferences and the patterns that hold regardless of language.
 
 ## Stated preferences
 
-- **CQRS** — separate the write side (commands) from the read side (queries /
-  projections). (Shorthand for the author's preferred command/query split —
-  "think CQRS.")
+- **The author's own command-pattern library** (CQRS-style) for the write side —
+  commands → events, kept separate from the read side (queries / projections).
+  (The author has this library already; "think CQRS" was just the hint for its
+  shape.)
 - **Event sourcing** — the data model is an append-only log of events.
 - **Azure cloud** — *considering* an Azure **event-ingestion** service
   (Event Hubs) + an Azure **NoSQL / telemetry** store for the large volume of

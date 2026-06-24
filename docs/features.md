@@ -17,8 +17,9 @@ claim is backed by the prior-art research, it links to the relevant report in
 
 - Existing apps **paywall features** and/or **compute pace badly** (jumpy GPS
   instantaneous pace is the usual culprit — see `hardware.md` for the fix).
-- Goals: own all the data, no paywall, and be *better* — especially at pace,
-  calorie burn, and adaptive guidance, where the incumbents are weak.
+- Goal: a better personal tool — especially at pace, calorie burn, and adaptive
+  guidance, where the incumbents are weak — without their paywalls or weak pace
+  math.
 
 ## Hardware context
 
@@ -40,7 +41,7 @@ Flags: **lock-in** (commit regardless) · **research-first** (now backed by
 
 | ID | Feature | Group | Status |
 |----|---------|-------|--------|
-| F0 | Unified local-first data store + open export | Architecture | `idea` · lock-in |
+| F0 | Unified event-sourced data store + open export | Architecture | `idea` · lock-in |
 | F2 | Personal physiological "master equation" | Model | `scoped` (research in) |
 | F1 | Haptic HR/pace/effort-zone coaching | Live coaching | `idea` |
 | F10 | Running power from own IMUs | Live coaching | `idea` |
@@ -63,21 +64,23 @@ Flags: **lock-in** (commit regardless) · **research-first** (now backed by
 
 # Architecture & cross-cutting principles
 
-## F0 — Unified local-first data store + open export · `idea` · **lock-in**
+## F0 — Unified event-sourced data store + open export · `idea` · **lock-in**
 
 The substrate everything else needs: a clean, timestamped, multi-channel
-**time-series log of every sensor stream**, on-device, exportable in open
-formats (FIT / GPX / Parquet / CSV).
+**time-series log of every sensor stream**, captured durably and exportable in
+open formats (FIT / GPX / Parquet / CSV).
 
 - Every model and feature is downstream of this — they're only as good as the
-  logged data.
-- Purest expression of the ethos: **own all your data, forever**, no cloud
-  lock-in, no paywall.
+  logged data. A clean unified log is what makes the F2 model, the projections,
+  and the analytics possible at all.
+- Open-format export keeps the data portable for offline analysis and model
+  fitting.
 - Normalize sources into named channels (`hr`, `rr`, `speed`, `cadence`,
   `grade`, `respRate`, `smo2`, `medConc`, `mass`, …) on a common clock —
   generalizes the two-channel Scosche design in `scosche-rhythm24.md`.
-- Implementation leans on **event sourcing** (see `stack.md`): the log *is* an
-  append-only event stream; read models/projections derive everything else.
+- Implementation uses **event sourcing + CQRS** (see `stack.md`): the log *is*
+  an append-only event stream; read models/projections (the query side) derive
+  everything else.
 - **Lock this in regardless.**
 
 ## CP1 — The app is a human-in-the-loop control system (F1/F2/F6)

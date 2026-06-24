@@ -300,6 +300,16 @@ home), accounting for hills, with road-level preferences.
     foot access — also lets us prefer footpaths / avoid busy roads later).
   - **Elevation data:** a DEM (SRTM/Copernicus) or terrain API; needed both to
     weight for "flat" and to build the grade profile that feeds F2.
+    - **USGS 3DEP lidar (user-requested — investigate at research time):** the
+      USGS 3D Elevation Program (3DEP) publishes very high-resolution
+      lidar-derived DEMs (1 m where available) for the US, public domain. Worth
+      digging into as a higher-quality US elevation source than SRTM for both
+      route grade-weighting and the grade input to F2. Research should confirm
+      current coverage, resolutions (1 m / 1‑3 arc-sec), access methods
+      (The National Map downloads, point-query API, dynamic image services),
+      formats (GeoTIFF / COG), and licensing. Combine with the barometer
+      (F1/F2) — lidar DEM for *planned* route grade, barometer for *live*
+      grade. **Deferred to end-of-conversation research.**
 
 **Open questions / notes:**
   - Favorite/hated roads need stable identity — store by OSM way ID *and*
@@ -310,3 +320,30 @@ home), accounting for hills, with road-level preferences.
     matching route; ties to F3 for predicted burn on that route.
   - Possible later: surface preference (road vs trail), safety/lighting,
     avoid-repeating-recent-routes for variety.
+
+---
+
+## Deferred research backlog
+
+Per the user's instruction, all research is deferred to the **end of the
+conversation** and run as one batch. Items accumulated so far:
+
+1. **Physiological master equation (F2) + accurate run calorie burn (F3 #2).**
+   Treat as ONE combined pass — calorie burn is the energy-cost output of the
+   same model. Cover: grade energetics (Minetti), ACSM/VO2 running equations,
+   critical power/speed, HR-response *dynamics* (state-space/ODE/Hammerstein-
+   Wiener), cardiac drift & heat, RPE relationships, ML personalization,
+   regression-vs-dynamic-model and invertibility/grey-box tradeoffs.
+2. **Medication PK model (F5).** Amphetamine pharmacokinetics: half-life &
+   urine-pH dependence, IR vs ER vs lisdexamfetamine (prodrug) kinetics, one-
+   vs two-compartment, personal calibration from HR response, and the
+   arousal-baseline-vs-effort-slope hypothesis the user raised.
+3. **Adaptive training science (F6).** Periodization (linear/block/DUP),
+   load models (TRIMP, TSS/rTSS, sRPE, ACWR + critiques), Fitness–Fatigue/PMC
+   (CTL/ATL/TSB), intensity distribution (polarized 80/20), how auto plan
+   generators work, HRV-guided/auto-regulated training evidence.
+4. **Routing + elevation data (F7).** Round-trip/loop generation algorithms;
+   self-hostable elevation-aware engines (BRouter, GraphHopper, Valhalla, ORS);
+   OSM data model for road preferences.
+5. **USGS 3DEP lidar elevation (F7, user-requested).** Coverage, resolutions,
+   access methods/APIs, formats (GeoTIFF/COG), licensing.

@@ -63,23 +63,25 @@ F2 must be **solvable for ANY variable** given the others, not just HR-from-pace
 - Reinforces the **grey-box / physics-informed** model choice (invertible +
   interpretable) over a black box that must be inverted numerically.
 
-### CP3 — Graceful degradation: make do with whatever sensors are present
+### CP3 — Capability gating (NOT full graceful degradation)
 
 Scope note: private app for the user **and close friends** (no public release
-intended). Friends may have **few or none** of these sensors. Every feature
-must degrade gracefully to whatever hardware is available.
-- Define **capability tiers**: phone-only (GPS + barometer + phone IMU) works;
-  +HR strap is better; +foot pod / breathing / SmO₂ better still.
-- Per-feature fallbacks (best estimate from what's present, honest about it):
-  - *Pace:* GPS-only (noisy) → GPS+foot-pod fusion (smooth).
-  - *HRmax/zones:* age formula → observed max (F4).
-  - *Calorie burn:* METs → HR→VO₂ → fully calibrated F2.
-  - *Grade:* map/DEM (F7) → phone barometer → none.
-- **F2 must produce a best estimate from any subset of inputs**, with
-  uncertainty that *widens* as inputs drop. A Bayesian / latent-variable framing
-  fits naturally — missing sensors become priors rather than hard failures.
-- *Research implication:* for each variable, also capture the cheap fallback
-  method, not just the gold-standard one (added to the backlog below).
+intended). Friends may have **few or none** of these sensors.
+
+**Decision (scaled back from earlier):** features simply **gate on/off** based on
+which sensors are connected. If you have the sensor, the feature is available; if
+not, it's hidden/disabled. **Do NOT** build alternate derivation paths that
+reconstruct a feature's data from a different sensor set.
+- e.g. no foot pod → no foot-pod-dependent metrics (don't synthesize them from
+  GPS). HR strap present → HR features on; absent → those features off.
+- Each feature declares the sensors/inputs it requires; the app checks
+  availability and shows or hides it. Simple capability flags, not fallback
+  estimators.
+- F2 likewise requires its inputs to be present to run; we are *not* committing
+  to "best estimate from any subset / missing-sensor-as-prior." (Population
+  priors for personal *coefficients* (the F2 fitness/state parameters) are still
+  fine — that's about calibration from few runs, not about substituting for
+  missing live sensors.)
 
 ### F1 — Haptic HR-zone coaching · `idea`
 
@@ -487,7 +489,6 @@ conversation** and run as one batch. Items accumulated so far:
    OSM data model for road preferences.
 5. **USGS 3DEP lidar elevation (F7, user-requested).** Coverage, resolutions,
    access methods/APIs, formats (GeoTIFF/COG), licensing.
-6. **Graceful-degradation fallbacks (CP3).** For each model variable, the cheap
-   phone-only / sensor-absent fallback method and its accuracy cost, plus how to
-   represent missing inputs (Bayesian priors / latent variables) so F2 still
-   solves. (Folds into the physiology pass — same sources.)
+
+(Dropped: the earlier "graceful-degradation fallbacks" research item — per CP3,
+features just gate on/off, so no fallback-derivation research is needed.)

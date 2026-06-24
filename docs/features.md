@@ -88,3 +88,43 @@ modeling territory; survey prior art before building. Domains to cover:
     the runner's own data accumulates.
   - *Data requirements:* what to log, at what rate, and how much before the
     fit is trustworthy — defines the data pipeline this feature depends on.
+
+### F3 — Diet tracking + energy balance · `idea` · partly research-first
+
+Possible expansion (user not fully decided): fold in **diet/nutrition
+tracking** and pair it with run calorie burn to track **energy balance
+(surplus / deficit)** over time.
+
+**Three parts:**
+
+1. **Photo-based food logging.** Take a picture of a meal → estimate
+   calories, carbs, protein. Likely a vision model (the latest Claude models
+   are strong at this; see `claude-api` skill before wiring up the API).
+   - *Known hard part:* portion/volume estimation is where photo calorie
+     estimates go wrong, not food *identification*. Plan for a quick
+     user-confirm/adjust step (portion size, was-it-eaten-all) rather than
+     trusting a single number. Consider a fiducial/known-object for scale.
+
+2. **Accurate run calorie burn — RESEARCH TASK (explicitly requested).**
+   Estimate calories burned during a run "very accurately" from all available
+   variables (pace, grade, HR, breathing, temperature, body mass, duration).
+   - This is essentially a **sub-application of F2**: calorie burn = metabolic
+     rate = a quantity the master equation should already produce (solve for
+     metabolic cost). Worth researching together / sharing the data pipeline.
+   - Approaches to survey: HR→VO2→kcal (with individual HR-VO2 calibration,
+     not generic formulas), running-power→metabolic-cost, ACSM running
+     equation, grade-adjusted energetics (Minetti), accelerometry-based
+     estimates, and EPOC / afterburn. Note: most consumer apps' calorie
+     numbers are crude (generic METs × time) — accuracy here is a real
+     differentiator.
+
+3. **Energy balance ledger.** Intake (from #1) minus expenditure
+   (BMR/RMR via e.g. Mifflin-St Jeor + daily activity + run burn from #2) →
+   running surplus/deficit. Surface trends, not just single-day noise.
+
+**Open questions:**
+  - Scope creep risk — is diet a first-class part of this app or a separate
+    companion? Decide before building.
+  - Privacy: food photos + body metrics are sensitive; where is this stored?
+  - For "accurate" burn, an individual HR-VO2 calibration (or the F2 model)
+    matters far more than picking a fancier off-the-shelf formula.

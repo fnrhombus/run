@@ -1,507 +1,479 @@
-# Feature wishlist — `run`
+# `run` — feature & design notes
 
-Running / training app. Captured from design discussion. Status legend:
-`idea` (just noted) · `scoped` (design agreed) · `building` · `done`.
+A personal running/training app for the author and a few close friends (no
+public release intended). This doc consolidates the design discussion: the
+vision, the architecture, the model at its core, and the feature set. Where a
+claim is backed by the prior-art research, it links to the relevant report in
+`research/`.
 
-Context driving the project:
-- Existing apps either paywall features or compute pace poorly.
-- Hardware on hand: Bluetooth optical HR monitor (Scosche Rhythm 24, see
-  `scosche-rhythm24.md`), Android phone.
-- Candidate sensors discussed: foot pod (BLE RSC `0x1814`), sacrum/belt IMU,
-  respiration band (RIP), barometer/grade, SmO2 (NIRS), core temp, CGM.
+**Companion docs**
+- `scosche-rhythm24.md` — BLE protocol for the Scosche Rhythm 24 HR armband.
+- `hardware.md` — DIY build / buy / skip decisions for every sensor.
+- `stack.md` — tech-stack & architecture preferences (React, event sourcing,
+  Azure).
+- `research/` — cited prior-art research reports (one per backlog area).
+
+## Why this project exists
+
+- Existing apps **paywall features** and/or **compute pace badly** (jumpy GPS
+  instantaneous pace is the usual culprit — see `hardware.md` for the fix).
+- Goals: own all the data, no paywall, and be *better* — especially at pace,
+  calorie burn, and adaptive guidance, where the incumbents are weak.
+
+## Hardware context
+
+- On hand: Bluetooth optical HR monitor (Scosche Rhythm 24), Android phone.
+- The author can fab PCBs and program ESP32 / Pi Pico → most body sensors are
+  DIY (IMU foot/belt pods, breathing band); a few are buy/skip. Full rationale
+  in `hardware.md`. Candidate sensors: foot pod (BLE RSC `0x1814`), sacrum/belt
+  IMU, respiration band (RIP), barometer/grade, SmO₂ (NIRS), core temp, CGM.
+
+## Status legend
+
+`idea` (noted) · `scoped` (design agreed) · `building` · `done`.
+Flags: **lock-in** (commit regardless) · **research-first** (now backed by
+`research/`).
 
 ---
 
-## Features
+## Feature index
 
-<!-- New features appended below as the user describes them. -->
-
-### F0 — Unified local-first data store + open export · `idea` · FOUNDATIONAL
-
-Not a user-facing feature so much as the substrate everything else needs: a
-clean, timestamped, multi-channel **time-series log of every sensor stream**,
-stored on-device and exportable in open formats (FIT / GPX / Parquet / CSV).
-
-- Every other feature (F2 master equation, F3 burn, F5 PK, F6 planner) is
-  downstream of this — they're only as good as the logged data.
-- Purest expression of the project's ethos: **own all your data, forever**, no
-  cloud lock-in, no paywall.
-- Design notes: normalize sources into named channels (`hr`, `rr`, `speed`,
-  `cadence`, `grade`, `respRate`, `smo2`, `medConc`, …) on a common clock;
-  generalizes the two-channel Scosche design (see `scosche-rhythm24.md`).
-- **Lock this in regardless** — it's the foundation.
+| ID | Feature | Group | Status |
+|----|---------|-------|--------|
+| F0 | Unified local-first data store + open export | Architecture | `idea` · lock-in |
+| F2 | Personal physiological "master equation" | Model | `scoped` (research in) |
+| F1 | Haptic HR/pace/effort-zone coaching | Live coaching | `idea` |
+| F10 | Running power from own IMUs | Live coaching | `idea` |
+| F13 | Transparent "why" explanations | Live coaching | `idea` · principle |
+| F17 | Audio coaching | Live coaching | `idea` |
+| F11 | Calibration field tests | Calibration & readiness | `idea` |
+| F9 | Daily readiness score | Calibration & readiness | `idea` · lock-in cand. |
+| F4 | Near-24/7 wear: resting HR, max HR, sleep | Tracking & physiology | `idea` |
+| F5 | Medication tracking + PK concentration model | Tracking & physiology | `scoped` (research in) |
+| F3 | Diet tracking + energy balance | Tracking & physiology | `idea` (research in) |
+| F8 | Auto-ingest weather (esp. humidity) | Tracking & physiology | `idea` |
+| F12 | Heat-safety advisor | Tracking & physiology | `idea` · tailored |
+| F14 | Health anomaly flags from RR data | Tracking & physiology | `idea` |
+| F6 | Dynamic / adaptive training guidance | Training guidance | `scoped` (research in) |
+| F7 | Elevation-aware route designer | Routes & terrain | `scoped` (research in) |
+| F15 | Auto shoe-mileage tracking | Conveniences | `idea` |
+| F16 | Locomotor-respiratory coupling training | Conveniences | `idea` |
 
 ---
 
-## Cross-cutting design principles
+# Architecture & cross-cutting principles
 
-These aren't single features — they shape F1/F2/F6 and the whole architecture.
+## F0 — Unified local-first data store + open export · `idea` · **lock-in**
 
-### CP1 — The app is a human-in-the-loop control system (F1/F2/F6)
+The substrate everything else needs: a clean, timestamped, multi-channel
+**time-series log of every sensor stream**, on-device, exportable in open
+formats (FIT / GPX / Parquet / CSV).
+
+- Every model and feature is downstream of this — they're only as good as the
+  logged data.
+- Purest expression of the ethos: **own all your data, forever**, no cloud
+  lock-in, no paywall.
+- Normalize sources into named channels (`hr`, `rr`, `speed`, `cadence`,
+  `grade`, `respRate`, `smo2`, `medConc`, `mass`, …) on a common clock —
+  generalizes the two-channel Scosche design in `scosche-rhythm24.md`.
+- Implementation leans on **event sourcing** (see `stack.md`): the log *is* an
+  append-only event stream; read models/projections derive everything else.
+- **Lock this in regardless.**
+
+## CP1 — The app is a human-in-the-loop control system (F1/F2/F6)
 
 HR-zone is the **setpoint**, the runner is the **actuator** (commanded via
 haptics/audio), pace/effort is the control output.
-- HR has **dead time + first-order lag**, so naïve PID on HR oscillates (chases
-  its own tail up/down hills) — this is the failure mode F1's dead-band guards.
-- Right architecture: **feedforward** from grade (known instantly via barometer/
-  map) through the **F2 model as the plant model**, with HR **feedback only to
-  trim** the residual. That's exactly why F1 can "proactively slow you down"
-  *before* HR drifts.
-- Endpoint: **Model Predictive Control** — use F2 to look ahead over the route's
-  grade profile (F7) and plan a pace trajectory that holds HR in zone across the
-  terrain. MPC handles dead time by predicting, not reacting.
-- The deferred HR-dynamics research is really **plant identification** for this
-  controller (time constants + dead time). Same data, control-theory lens.
 
-### CP2 — The master equation must be fully invertible (extends F2)
+- HR has **dead time + first-order lag**, so naïve PID on HR oscillates — the
+  failure mode F1's dead-band guards. **Research confirms the plant**: a
+  first-order-plus-dead-time response (a two-time-constant structure fits
+  better), see [research/01 §7](research/01-physiology-master-equation.md).
+- Right architecture: **feedforward** from grade (known instantly via
+  barometer/map) through the **F2 model as the plant model**, with HR
+  **feedback only to trim**. The research's Hammerstein model is **invertible
+  for feedforward pace** — exactly this design, and its "central design fact."
+- Endpoint: **Model Predictive Control** — use F2 to look ahead over a route's
+  grade profile (F7) and plan a pace trajectory that holds HR in zone. MPC
+  handles dead time by predicting, not reacting.
 
-F2 must be **solvable for ANY variable** given the others, not just HR-from-pace:
-- "What HR would I need to hold to climb this hill at pace X?"
-- "What pace is sustainable at HR zone Y on this grade/temperature?"
-- "What **subjective effort (RPE)** to maintain to hold target Z?" → the haptic/
-  audio channel can cue a change in *effort*, not only pace.
-- Reinforces the **grey-box / physics-informed** model choice (invertible +
-  interpretable) over a black box that must be inverted numerically.
+## CP2 — The master equation must be fully invertible (extends F2)
 
-### CP3 — Capability gating (NOT full graceful degradation)
+F2 must be **solvable for ANY variable** given the others:
+- "What HR to hold to climb this hill at pace X?" · "What pace is sustainable at
+  HR zone Y on this grade/temperature?" · "What **effort (RPE)** to maintain to
+  hold target Z?" → the haptic/audio channel can cue a change in *effort*, not
+  only pace.
+- Favors a **grey-box / physics-informed** model (invertible + interpretable).
+  The research backs this: the Cheng–Su grey-box and the invertible Hammerstein
+  structure give exactly the both-directions solvability we want
+  ([research/01 §7](research/01-physiology-master-equation.md)).
 
-Scope note: private app for the user **and close friends** (no public release
-intended). Friends may have **few or none** of these sensors.
+## CP3 — Capability gating (not full graceful degradation)
 
-**Decision (scaled back from earlier):** features simply **gate on/off** based on
-which sensors are connected. If you have the sensor, the feature is available; if
-not, it's hidden/disabled. **Do NOT** build alternate derivation paths that
-reconstruct a feature's data from a different sensor set.
-- e.g. no foot pod → no foot-pod-dependent metrics (don't synthesize them from
-  GPS). HR strap present → HR features on; absent → those features off.
-- Each feature declares the sensors/inputs it requires; the app checks
-  availability and shows or hides it. Simple capability flags, not fallback
-  estimators.
-- F2 likewise requires its inputs to be present to run; we are *not* committing
-  to "best estimate from any subset / missing-sensor-as-prior." (Population
-  priors for personal *coefficients* (the F2 fitness/state parameters) are still
-  fine — that's about calibration from few runs, not about substituting for
-  missing live sensors.)
+Friends may have **few or none** of these sensors.
 
-> **PARKED — possible future direction (intentionally deferred, not rejected).**
-> Full *graceful degradation* — reconstructing a feature's data from a different
-> set of available sensors — **is technically possible** and was deliberately
-> dropped for now (simplicity). If revisiting later, it would look like:
-> capability *tiers* (phone-only GPS+baro+IMU → +HR → +foot pod/breathing/SmO₂)
-> with per-variable fallback estimators (pace: GPS-only → GPS+foot-pod fusion;
-> HRmax: age formula → observed; calorie burn: METs → HR→VO₂ → calibrated F2;
-> grade: DEM → barometer), and F2 producing a best estimate from *any subset* of
-> inputs with uncertainty that widens as inputs drop (a Bayesian / latent-
-> variable framing where a missing sensor becomes a prior rather than a hard
-> failure). **Reminder to future reviewer: this door is open if/when you want
-> it.**
+**Decision:** features **gate on/off** by connected sensors. Have the sensor →
+feature available; don't → hidden/disabled. **Do not** build alternate
+derivation paths that reconstruct a feature's data from a different sensor set.
+- e.g. no foot pod → no foot-pod metrics (don't synthesize from GPS); no HR
+  strap → HR features off.
+- Each feature declares the inputs it requires; the app shows/hides accordingly.
+  Simple capability flags, not fallback estimators.
+- F2 requires its inputs present to run. (Population *priors* for personal
+  *coefficients* are still fine — that's calibration from few runs, §Model, not
+  substituting for a missing live sensor.)
 
-### F1 — Haptic HR-zone coaching · `idea`
+> **PARKED — possible future direction (deferred, not rejected).** Full graceful
+> degradation — reconstructing a feature's data from a different sensor set — is
+> technically possible. If revisited: capability *tiers* (phone-only
+> GPS+baro+IMU → +HR → +foot pod/breathing/SmO₂) with per-variable fallback
+> estimators (pace: GPS-only → GPS+foot-pod fusion; HRmax: age formula →
+> observed; calorie burn: METs → HR→VO₂ → calibrated F2; grade: DEM →
+> barometer), and F2 giving a best estimate from *any subset* of inputs with
+> uncertainty that widens as inputs drop (Bayesian / latent-variable framing —
+> a missing sensor becomes a prior, not a hard failure). *Future reviewer: this
+> door is open if/when you want it.*
 
-Phone vibrates to tell the runner to speed up or slow down so they hold a
-target heart-rate zone **without looking at the screen** (phone strapped to
-upper arm).
+## CP4 — Transparency by default (see F13)
 
-- **Input:** live HR from the BLE monitor (Scosche `0x2A37`), compared against
-  a target zone (lo/hi bpm bounds, or % of HRmax / HRR).
-- **Output:** distinct vibration patterns — e.g. one buzz pattern = "speed up"
-  (HR below zone), another = "slow down" (HR above zone), silence = in zone.
-  Patterns must be distinguishable by feel alone through a sleeve.
-- **Design notes / open questions:**
-  - HR lags effort by 10–30 s; cue off a smoothed HR + rate-of-change so it
-    doesn't nag during normal zone wobble. Add hysteresis / a dead-band and a
-    minimum re-alert interval so it isn't buzzing constantly near a boundary.
-  - Distinguish "drifting out" (gentle reminder) from "way out of zone"
-    (stronger/urgent pattern)?
-  - Android haptics via `expo-haptics` are limited to preset styles; rich
-    custom vibration patterns need the native `Vibration` API
-    (`Vibration.vibrate([pattern])`) — confirm against v56 docs.
-  - Screen will be off / pocketed-equivalent on the arm — vibration must fire
-    reliably with the app backgrounded/asleep (foreground service / keep-alive
-    during an active run).
-  - Future: same haptic channel could cue target *pace* zones once foot-pod
-    fusion exists (see sensor notes), not just HR.
-
-### F2 — Personal physiological "master equation" · `idea` · research-first
-
-After enough data is collected, fit a personal model relating the runner's
-key variables so it can be **solved for any one of them given the others**:
-
-- **Variables:** pace/speed, ambient temperature, grade, heart rate,
-  breathing (rate and/or ventilation), and a **subjective effort parameter
-  (RPE / Borg)**.
-- **Headline use case — feedforward pacing:** holding an HR zone on flat
-  ground, then a hill begins. Because grade is known *immediately* (barometer/
-  map) while HR lags 10–30 s, the model predicts the pace that will keep HR in
-  zone **before** HR drifts, and the haptic channel (F1) proactively says
-  "slow down" on the way into the hill instead of reacting after the fact.
-- Many other use cases (predict HR for a planned pace, estimate effort cost of
-  a route, detect abnormal readings / fatigue when actual diverges from
-  predicted, set realistic targets in heat, etc.).
-
-**Research must come first** — this is well-trodden exercise-physiology +
-modeling territory; survey prior art before building. Domains to cover:
-  - Grade Adjusted Pace / Minetti energetics of slope running.
-  - ACSM metabolic / VO2 running equations; running economy.
-  - Critical Power / Critical Speed; running "power" models (Stryd).
-  - HR *dynamics* during exercise: first-order / state-space / Hammerstein-
-    Wiener / ODE models of HR response to load (this is the key to the
-    transient/hill case — a static fit won't capture lag).
-  - Cardiac drift & heat: effect of temperature/dehydration on HR
-    (Physiological Strain Index, Pw:HR aerobic decoupling).
-  - RPE relationships: Borg vs %HRmax / ventilatory thresholds; session-RPE.
-  - ML approaches to personalized HR/pace prediction and any published
-    "running performance" multivariate models.
-
-**Modeling design tensions to resolve in research (not yet decided):**
-  - *Regression vs. AI:* a static regression maps instantaneous inputs→output
-    and will be **wrong exactly during transitions** (the hill case) — running
-    is a dynamical system (HR has lag + transients). Likely need a *dynamic*
-    model (state-space / ODE / recurrent), not a static fit.
-  - *"Solvable for any variable"* wants an implicit relation
-    `F(pace, temp, grade, HR, breath, RPE) = 0` that can be rearranged. A
-    transparent grey-box / physics-informed model is invertible and
-    interpretable; a black-box neural net must be inverted numerically and is
-    harder to trust. Leaning grey-box.
-  - *Personalization:* physiology is individual — likely a population/base
-    model + per-user calibration (hierarchical / Bayesian), refined as more of
-    the runner's own data accumulates.
-  - *Data requirements:* what to log, at what rate, and how much before the
-    fit is trustworthy — defines the data pipeline this feature depends on.
-
-### F3 — Diet tracking + energy balance · `idea` · partly research-first
-
-Possible expansion (user not fully decided): fold in **diet/nutrition
-tracking** and pair it with run calorie burn to track **energy balance
-(surplus / deficit)** over time.
-
-**Three parts:**
-
-1. **Photo-based food logging.** Take a picture of a meal → estimate
-   calories, carbs, protein. Likely a vision model (the latest Claude models
-   are strong at this; see `claude-api` skill before wiring up the API).
-   - *Known hard part:* portion/volume estimation is where photo calorie
-     estimates go wrong, not food *identification*. Plan for a quick
-     user-confirm/adjust step (portion size, was-it-eaten-all) rather than
-     trusting a single number. Consider a fiducial/known-object for scale.
-
-2. **Accurate run calorie burn — RESEARCH TASK (explicitly requested).**
-   Estimate calories burned during a run "very accurately" from all available
-   variables (pace, grade, HR, breathing, temperature, body mass, duration).
-   - This is essentially a **sub-application of F2**: calorie burn = metabolic
-     rate = a quantity the master equation should already produce (solve for
-     metabolic cost). Worth researching together / sharing the data pipeline.
-   - Approaches to survey: HR→VO2→kcal (with individual HR-VO2 calibration,
-     not generic formulas), running-power→metabolic-cost, ACSM running
-     equation, grade-adjusted energetics (Minetti), accelerometry-based
-     estimates, and EPOC / afterburn. Note: most consumer apps' calorie
-     numbers are crude (generic METs × time) — accuracy here is a real
-     differentiator.
-
-3. **Energy balance ledger.** Intake (from #1) minus expenditure
-   (BMR/RMR via e.g. Mifflin-St Jeor + daily activity + run burn from #2) →
-   running surplus/deficit. Surface trends, not just single-day noise.
-
-**Open questions:**
-  - Scope creep risk — is diet a first-class part of this app or a separate
-    companion? Decide before building.
-  - Privacy: food photos + body metrics are sensitive; where is this stored?
-  - For "accurate" burn, an individual HR-VO2 calibration (or the F2 model)
-    matters far more than picking a fancier off-the-shelf formula.
-
-### F4 — Near-24/7 wear: resting HR, max HR, sleep · `idea`
-
-Wear the HR monitor as continuously as the charge cycle allows and mine the
-passive data for baseline physiology.
-
-- **Resting HR (RHR).** Derive from the lowest sustained HR (typically during
-  sleep / early morning), tracked as a *trend* — RHR is a strong fitness /
-  recovery / illness signal (a spike often precedes feeling sick or means
-  overtraining). Achievable from passive wear. Good input to F2/F3 recovery
-  state and RMR baseline.
-- **Max HR.** *Caveat:* true HRmax only appears during near-maximal effort and
-  is rarely captured at rest — passive wear won't find it. Better plan:
-  detect *observed* max from hard run sessions, keep a running maximum, and use
-  an age-based formula (e.g. 208 − 0.7·age) only as a prior until a real max is
-  seen. Be honest in the UI about which it is. Accurate HRmax/RHR then anchor
-  the HR zones used by F1 and F2.
-- **Overnight HRV.** We already get per-beat RR in the device's HRV sport mode
-  (see `scosche-rhythm24.md`) — nighttime HRV (e.g. rMSSD) is the standard
-  recovery-readiness metric. Strong, almost-free win given the data is already
-  there. Confirm running HRV mode 24/7 is acceptable for battery.
-- **Sleep.** Estimate sleep/wake and duration (and *rough* staging) from HR +
-  HRV + the armband's motion/actigraphy. Research-backed but consumer accuracy
-  is limited — promise sleep timing/duration confidently, stages only loosely.
-
-**Open questions / constraints:**
-  - *Battery & charging window:* needs a daily charge slot; plan for and
-    surface the inevitable data gap. Does HRV mode drain faster?
-  - *Onboard storage & sync:* 24/7 logging is a lot of data. Device records to
-    a FIT file onboard ("hundreds of hours" claimed, full-storage behavior
-    undocumented — open Q in the Scosche notes). Need a reliable background
-    BLE sync cadence so storage doesn't fill and the phone DB stays current.
-  - *Continuous capture:* live BLE drops are fine here — rely on the onboard
-    FIT record for completeness, sync periodically rather than streaming 24/7.
-  - Skin tolerance / rotation for all-day optical wear.
-
-### F5 — Medication tracking + PK concentration model · `idea` · research-first
-
-Log daily medication (user takes amphetamines daily) and model the estimated
-**current blood concentration** over time via pharmacokinetics, then learn how
-concentration correlates with the runner's physiology and performance.
-
-- **Log:** dose (mg), time taken, and **formulation** — this matters a lot:
-  immediate-release vs extended-release vs prodrug (lisdexamfetamine) have very
-  different curves.
-- **PK model:** first-order absorption + elimination; one- vs two-compartment
-  TBD by formulation (research). Estimate plasma concentration C(t) from
-  superimposed doses. Notes for the research pass:
-  - d-amphetamine half-life is on the order of ~10–13 h but is **strongly
-    urine-pH dependent** (acidic urine clears it much faster) — a real source
-    of day-to-day and person-to-person variability.
-  - Extended-release is dominated by absorption kinetics; **lisdexamfetamine is
-    a prodrug** converted to active d-amphetamine by rate-limiting hydrolysis →
-    model as prodrug→active conversion, not a simple bolus.
-  - Population PK gives the curve shape; individual clearance varies (genetics/
-    CYP, urine pH, etc.). **Be honest in the UI: this is a model-based estimate,
-    not a blood measurement.**
-
-- **Why it's valuable here — it's a confounder for almost everything else:**
-  - **Raises resting and exercise HR / BP** → directly biases HR zones (F1) and
-    the master equation (F2). Concentration should be a *covariate* in F2 so the
-    model can separate "the drug raised my HR" from "I'm working harder."
-  - **Suppresses appetite** → skews intake in the F3 energy-balance ledger.
-  - **Disrupts sleep** → interacts with F4 sleep/recovery; timing of last dose
-    vs. sleep onset is learnable from the data.
-  - Once concentration is a known input, the app can *learn the runner's
-    individual response* (HR offset per ng/mL, RPE shift, sleep impact, etc.).
-
-- **Safety note (surface responsibly, not alarmist):** stimulants combined with
-  intense exercise raise cardiovascular load and impair thermoregulation
-  (higher core-temp risk, esp. in heat — ties to the temperature variable in
-  F2). Worth a gentle caution in heat/high-concentration conditions. This is a
-  personal tracking aid, **not medical advice**, and doesn't replace a doctor.
-
-**Personal observation (user, to test against data — not assume):** the user
-reports that during exertion the effort→HR relationship feels *unchanged* on
-vs. off the drug; what differs is **baseline arousal/excitability at rest**
-(harder to relax, and anecdotally a slightly *higher* resting HR during multi-
-week abstinence). Hypothesis to validate: medication mainly shifts the resting/
-arousal baseline, not the effort→HR slope. If true, F2 should let concentration
-modulate a resting/arousal term rather than rescaling the whole HR-effort curve.
-Treat as a hypothesis to confirm from the runner's own data, not a fixed prior.
-
-**Open questions:**
-  - Which formulation(s) does the user take? (drives the model choice)
-  - Sensitive health data — storage/privacy handling (same concern as F3 diet).
-  - Can we *calibrate* the personal PK from observed HR response, or only
-    assume population parameters?
-
-### F6 — Dynamic / adaptive training guidance · `idea` · research-first
-
-Reject the rigid "interview → fixed 12-week plan, fall behind = tough luck"
-model. Instead, decide each session **day-of (or day-prior)** based on current
-state, so a missed day doesn't throw the whole schedule into disarray.
-
-- **Core idea — rolling horizon, not a frozen calendar.** Keep a flexible
-  long-range *skeleton* (goal + phase + rough weekly shape) but only *commit* a
-  specific workout the day before / day of. Life happens; the plan absorbs it
-  instead of breaking.
-- **Auto-regulation is the key concept** (the thing other apps mostly lack):
-  pick today's session from *readiness*, which we already have the inputs for —
-  overnight HRV / RHR / sleep (F4), recent load, RPE, and medication state
-  (F5). HRV-guided training is research-backed (often matches or beats fixed
-  plans). This is a natural consumer of the rest of the app's data.
-- **"Different plans with different priorities"** ⇒ a workout/template library +
-  selection logic parameterized by goal (5k vs marathon vs general fitness vs
-  return-from-layoff), phase, and the runner's current fitness.
-
-**How automated plan generators actually work (for the research deliverable —
-user said they don't know; document it):**
-  - Most are **rule/template engines**: a library of workout types, sequenced by
-    periodization rules, scaled to current fitness (from a recent race or a
-    threshold/critical-speed test), with paces derived from threshold/CS.
-  - Underlying training-science to survey:
-    - *Periodization:* linear vs. block vs. **daily-undulating** (DUP);
-      macro/meso/microcycles. The user wants the auto-regulated end of this.
-    - *Load quantification:* TRIMP (HR), TSS/rTSS (pace/power), session-RPE
-      load; **Acute:Chronic Workload Ratio** (note recent critiques) for
-      ramp-rate / injury risk.
-    - *Fitness–Fatigue (Banister impulse-response) & PMC* (CTL/ATL/TSB =
-      fitness/fatigue/form). This is itself a *dynamical model* — same flavor as
-      F2, and a strong candidate engine for "how much can I do today."
-    - *Intensity distribution:* polarized 80/20 (Seiler) vs. threshold vs.
-      pyramidal.
-    - *Progression / safety rules:* sensible ramp limits, recovery weeks,
-      taper.
-  - Advanced approaches to note: optimization / RL planners, and **LLM-driven
-    planning with hard guardrails** (the rules above as constraints) — fits an
-    app that already has rich per-day context.
-
-**Design tensions / open questions:**
-  - Goal races still need *some* forward structure (you can't fully wing a
-    marathon build) — resolve as "goal-anchored skeleton + day-of commitment,"
-    not zero planning.
-  - Don't over-react to single-day readiness noise — smooth, like F1's HR cue.
-  - Cold start: how to guide before enough personal data exists (lean on the
-    population rules, personalize as F2/F4 data accumulates).
-  - Ties together the whole app: F2 (what pace/load is appropriate), F4
-    (readiness), F5 (medication as a state variable), F3 (fueling for the
-    session).
-
-### F7 — Elevation-aware route designer · `idea`
-
-Generate running routes within a user-defined area (typically a radius from
-home), accounting for hills, with road-level preferences.
-
-- **Area constraint:** routes confined to a region — most likely a radius from
-  home (also support custom-drawn areas later).
-- **Hill awareness, two modes:**
-  - *Find flat* when a flat route is wanted — minimize total elevation gain
-    (weight the road graph by grade).
-  - *Account for hills* otherwise — report the elevation profile and, via the
-    F2 model + grade-adjusted pace, give an **expected pace / effort / time**
-    for the specific hills on that route (and optionally adjust target distance
-    so effort matches the intended session).
-- **Road preferences:** mark **favorite roads** (prefer) and **hated roads**
-  (avoid / heavy penalty). Per-road weighting applied to the routing cost.
-
-**How round-trip route generation actually works (note for build):**
-  - This is **loop generation**, not A→B shortest path — generating a closed
-    loop of a *target distance* from a start point is related to the
-    (NP-hard) orienteering / arc-routing problem, so engines use heuristics.
-  - Existing engines that already do round-trip + elevation-weighted routing:
-    **GraphHopper** (round-trip routing + custom elevation weighting),
-    **BRouter** (excellent custom profiles, elevation-aware, self-hostable),
-    **Valhalla**, **OpenRouteService** (round-trip + avoid features). Prefer
-    self-hostable (BRouter/GraphHopper) — cost + privacy, fits the no-paywall
-    ethos.
-  - **Map/road data:** OpenStreetMap (free; tags for surface, highway class,
-    foot access — also lets us prefer footpaths / avoid busy roads later).
-  - **Elevation data:** a DEM (SRTM/Copernicus) or terrain API; needed both to
-    weight for "flat" and to build the grade profile that feeds F2.
-    - **USGS 3DEP lidar (user-requested — investigate at research time):** the
-      USGS 3D Elevation Program (3DEP) publishes very high-resolution
-      lidar-derived DEMs (1 m where available) for the US, public domain. Worth
-      digging into as a higher-quality US elevation source than SRTM for both
-      route grade-weighting and the grade input to F2. Research should confirm
-      current coverage, resolutions (1 m / 1‑3 arc-sec), access methods
-      (The National Map downloads, point-query API, dynamic image services),
-      formats (GeoTIFF / COG), and licensing. Combine with the barometer
-      (F1/F2) — lidar DEM for *planned* route grade, barometer for *live*
-      grade. **Deferred to end-of-conversation research.**
-
-**Open questions / notes:**
-  - Favorite/hated roads need stable identity — store by OSM way ID *and*
-    geometry (way IDs change); snap user taps to the nearest way.
-  - Likely want **multiple candidate loops ranked**, not one answer
-    (by flatness, by how much they use favorites, by variety).
-  - Ties to F6: the day's planned session ("flat easy 8k") can auto-request a
-    matching route; ties to F3 for predicted burn on that route.
-  - Possible later: surface preference (road vs trail), safety/lighting,
-    avoid-repeating-recent-routes for variety.
+Every recommendation explains itself. Both a feature (F13) and a constraint that
+favors the grey-box model (CP2): black boxes can't explain themselves.
 
 ---
 
-## Proposed additions (Claude-suggested, user said "save everything")
+# The model (F2) — the core of the app
 
-### F8 — Auto-ingest weather (esp. humidity) · `idea`
+## F2 — Personal physiological "master equation" · `scoped` · research in
 
-Pull ambient conditions from a weather API automatically — temperature is a
-direct input to F2, so don't make the user guess it.
-- **Humidity matters more than dry temperature** for thermoregulation; use
-  wet-bulb / heat index, not just °. Also useful: wind (route planning),
-  AQI/pollen (breathing).
-- Nearly free to add; makes F2 honest about hot, muggy days. Feeds F12.
+Fit a personal model relating the runner's key variables so it can be **solved
+for any one of them given the others** (CP2). Full prior-art and the concrete
+equations to use are in
+[research/01](research/01-physiology-master-equation.md); summary below.
 
-### F9 — Daily readiness score · `idea` · lock-in candidate
+- **Variables:** pace/speed, ambient temperature (& humidity, F8), grade, heart
+  rate, breathing, subjective effort (RPE/Borg), and body mass (an input — see
+  below). Medication concentration (F5) enters as a covariate.
+- **Headline use case — feedforward pacing:** grade is known *immediately* while
+  HR lags 10–30 s, so the model predicts the pace that keeps HR in zone
+  **before** HR drifts; F1 cues "slow down" on the way *into* the hill (CP1).
+
+### Concrete building blocks the research settled
+
+- **Grade energetics:** Minetti cost-of-transport polynomial `Cr(i)` (verified);
+  **clamp grade to ±0.45**. Grade-Adjusted Pace via Minetti (default) or
+  Strava's quadratic (empirical alternative).
+- **Metabolic baseline:** ACSM running VO₂ equation (verified); VO₂→kcal via the
+  caloric-equivalent-of-O₂ pipeline.
+- **Capacity & reserve:** the **Critical Speed / Critical Power** 2-parameter
+  model (verified) — this is the CS + D′ pair below.
+- **HR dynamics:** first-order + dead-time (two-time-constant better);
+  **invertible Hammerstein** for feedforward — see CP1/CP2.
+- **Heat/humidity:** treat temperature and humidity as **two separate channels**;
+  cardiac drift, Physiological Strain Index, WBGT scalar, Pa:HR/Pw:HR aerobic
+  decoupling all have usable forms in the report.
+- **RPE anchoring:** use **%HRR (Karvonen), not %HRmax**; Borg 6–20 + Foster
+  CR10 / session-RPE.
+
+### Personal coefficients ("current strength level")
+
+Roughly **5–8 coefficients**, four roles. MVP starts with ~5 (CS, D′, economy,
+HRmax, RHR) + one HR time-constant for the control loop; add the rest as data
+justifies.
+
+| Role | Coefficient(s) | Notes |
+|------|----------------|-------|
+| Aerobic capacity & reserve | **Critical Speed (CS)**, **D′** | *This is "strength."* Verified 2-parameter CP model. |
+| Efficiency | **Running economy** | O₂ cost per kg per km; distinct from capacity. |
+| HR coupling | **HRmax**, **resting HR** (→ HR reserve); optionally HR–VO₂ slope | Use %HRR for zones. |
+| Dynamics & environment | **HR time constant(s) + dead time**, **heat/humidity sensitivity** | Plant-ID params (CP1) + cardiac-drift rate. |
+| Perceptual / fuel (optional) | **RPE gain + offset**, **substrate/fat-max** | For the "cue me on effort" use (CP2) and F3 fuel side. |
+
+### Two kinds of personal parameters — don't conflate them
+
+- **Fitness coefficients** (above) change over *weeks* — CS, D′, economy,
+  HRmax. "How fit am I."
+- **Daily-state inputs** are *measured, not fitted*: HRV/readiness (F9),
+  medication concentration (F5), heat/humidity (F8), accumulated fatigue, and
+  **body mass**. "What's my state today." The controller needs both.
+
+### Body mass is an input, not a coefficient
+
+- Fitness coefficients are **mass-normalized** (VO₂max mL/kg/min, economy
+  mL/kg/km, CS a speed), so mass enters separately as a scalar on the energetic
+  terms.
+- **Calorie burn scales ~linearly with mass** (~1 kcal/kg/km flat); **hills
+  scale harder** (∝ mass·g·height).
+- **Consequence:** a weight change needs **no recalibration** — log a new weight
+  (F3 wants daily weigh-ins anyway) and the model rescales burn/hill terms
+  instantly; slow coefficients stay put. Use **total moving mass** =
+  body + carried. Composition drift is absorbed by slow recalibration.
+
+### Identifiability & personalization
+
+More coefficients → more data to fit (ties to F11). Use a **hierarchical**
+approach: start from population priors, let each person's own data pull their
+coefficients off the average as it accumulates. A sensor-light friend runs on
+population values with wide uncertainty.
+
+### Modeling stance (research-informed)
+
+- A **dynamic** model (state-space / ODE / Hammerstein), **not** a static
+  regression — a static fit is wrong exactly during transitions (the hill case).
+- **Grey-box / physics-informed** for invertibility + transparency (CP2/CP4);
+  black-box ML only helps short-horizon and isn't needed for pace zones.
+- Open items: exact two-time-constant vs single, the speed-dependence of GAP
+  (no published blend), and per-user heat-sensitivity calibration.
+
+---
+
+# Live run coaching
+
+## F1 — Haptic zone coaching · `idea`
+
+Phone vibrates to tell the runner to speed up / slow down to hold a target zone
+**without looking at the screen** (phone strapped to upper arm).
+
+- **Input:** live HR vs. a target zone (use **%HRR** bounds — research/01 §9).
+  Extends to **pace** and **effort** zones once F10/F2 exist (CP2).
+- **Output:** distinct vibration patterns — speed-up / slow-down / in-zone
+  (silence) — distinguishable by feel through a sleeve; stronger pattern for
+  "way out" vs gentle for "drifting."
+- **Design notes (control loop — CP1):** cue off **smoothed HR + rate-of-change**
+  with a **dead-band** and a minimum re-alert interval, so it doesn't nag near a
+  boundary or chase HR lag. Android: `expo-haptics` is preset-only; rich custom
+  patterns need the native `Vibration` API — confirm against v56 docs. Must fire
+  with the app backgrounded → **foreground service** during an active run.
+
+## F10 — Running power from own IMUs · `idea`
+
+Derive a real-time **running power** metric from the DIY foot/belt IMUs + grade
+(Stryd sells this for ~$200; we're building the sensors anyway — `hardware.md`).
+Power responds to grade *instantly* (no HR lag) → a **better pacing target than
+HR for hills** (CP1). Model structures (GOVSS, di Prampero, Stryd) and the
+power↔economy relationship are in
+[research/01 §6](research/01-physiology-master-equation.md). Can drive a haptic
+*power*-zone mode (F1).
+
+## F13 — Transparent "why" explanations · `idea` · principle (CP4)
+
+Every recommendation explains itself — *"ease off: grade hit 6% and you're 4 bpm
+over zone."* Answers the anti-paywall, anti-black-box motivation; favors the
+grey-box F2.
+
+## F17 — Audio coaching · `idea`
+
+Voice cues via earbuds as a richer complement to F1 — splits, pace, "ease off"
+without looking at the screen.
+
+---
+
+# Calibration & readiness
+
+## F11 — Calibration field tests · `idea`
+
+Periodic structured tests (critical-speed / threshold) to fit F2's coefficients
+and anchor F6. Without these, the master equation is uncalibrated. The CS/CP test
+protocols and race-pace mapping are in
+[research/01 §5](research/01-physiology-master-equation.md). Byproduct: a
+race-time predictor (Riegel) for free.
+
+## F9 — Daily readiness score · `idea` · **lock-in candidate**
 
 Synthesize overnight HRV + RHR + sleep (F4), recent training load, and
-medication state (F5) into one number that **drives F6's day-of decision**.
-- This is the concrete glue that turns "adaptive training" into something that
-  actually picks today's workout. All inputs already exist in the system.
-- Smooth it — don't react to single-day noise (same lesson as F1).
-
-### F10 — Running power from own IMUs · `idea`
-
-Derive a real-time **running power** metric from the DIY foot/belt IMUs +
-grade (what Stryd sells for ~$200; we're building the sensors anyway).
-- Power responds to grade *instantly* — none of HR's 10–30 s lag — so it's
-  arguably a **better pacing target than HR for the hill scenario** (F1/F2).
-- Could drive a haptic *power*-zone mode (extends F1).
-
-### F11 — Calibration field tests · `idea`
-
-Periodic structured tests (critical-speed / threshold) to fit the personal
-parameters of F2 and anchor F6.
-- Without this the master equation is uncalibrated.
-- Byproduct: a race-time predictor (Riegel) for free.
-
-### F12 — Heat-safety advisor · `idea` · tailored
-
-Combine wet-bulb/humidity (F8) + current medication concentration (F5) +
-exertion to flag genuinely risky heat conditions.
-- Specific to this user: amphetamines impair thermoregulation (F5 safety note),
-  so heat risk is elevated vs. a typical runner. Informational, not alarmist.
-
-### F13 — Transparent "why" explanations · `idea` · design principle
-
-Every recommendation explains itself — e.g. *"ease off: grade hit 6% and you're
-4 bpm over zone."*
-- Directly answers the project's motivation (hating opaque, paywalled apps).
-- Also a design constraint favoring the **grey-box** model in F2 — black boxes
-  can't explain themselves.
-
-### F14 — Health anomaly flags from RR data · `idea`
-
-Use the 24/7 per-beat RR stream (F4) to flag irregular-beat patterns or an
-unexplained RHR spike (illness / overtraining / arrhythmia-like patterns).
-- Frame carefully as **informational, not diagnostic**. Real signal exists in
-  data we'll already have.
-
-### F15 — Auto shoe-mileage tracking · `idea`
-
-Track mileage per shoe pair and warn at replacement mileage.
-- Foot pods could **auto-detect which shoes** are worn. Trivial, genuinely
-  useful.
-
-### F16 — Locomotor-respiratory coupling training · `idea`
-
-Once the breathing band exists, coach a breath:step rhythm (e.g. 3:2) using the
-respiration sensor + cadence. Niche but researched; sensors will be on hand.
-
-### F17 — Audio coaching · `idea`
-
-Voice cues via earbuds as a richer complement to haptics (F1) — the phone's
-already strapped to the arm. Can convey more than buzz patterns (splits, pace,
-"ease off") without looking at the screen.
+medication state (F5) into one number that **drives F6's day-of decision**. The
+HRV-guided decision rule to implement is in
+[research/03](research/03-adaptive-training.md) (modest but real benefit). Smooth
+it — don't react to single-day noise (same lesson as F1).
 
 ---
 
-## Deferred research backlog
+# Tracking & physiology
 
-Per the user's instruction, all research is deferred to the **end of the
-conversation** and run as one batch. Items accumulated so far:
+## F4 — Near-24/7 wear: resting HR, max HR, sleep · `idea`
 
-1. **Physiological master equation (F2) + accurate run calorie burn (F3 #2).**
-   Treat as ONE combined pass — calorie burn is the energy-cost output of the
-   same model. Cover: grade energetics (Minetti), ACSM/VO2 running equations,
-   critical power/speed, HR-response *dynamics* (state-space/ODE/Hammerstein-
-   Wiener), cardiac drift & heat, RPE relationships, ML personalization,
-   regression-vs-dynamic-model and invertibility/grey-box tradeoffs.
-2. **Medication PK model (F5).** Amphetamine pharmacokinetics: half-life &
-   urine-pH dependence, IR vs ER vs lisdexamfetamine (prodrug) kinetics, one-
-   vs two-compartment, personal calibration from HR response, and the
-   arousal-baseline-vs-effort-slope hypothesis the user raised.
-3. **Adaptive training science (F6).** Periodization (linear/block/DUP),
-   load models (TRIMP, TSS/rTSS, sRPE, ACWR + critiques), Fitness–Fatigue/PMC
-   (CTL/ATL/TSB), intensity distribution (polarized 80/20), how auto plan
-   generators work, HRV-guided/auto-regulated training evidence.
-4. **Routing + elevation data (F7).** Round-trip/loop generation algorithms;
-   self-hostable elevation-aware engines (BRouter, GraphHopper, Valhalla, ORS);
-   OSM data model for road preferences.
-5. **USGS 3DEP lidar elevation (F7, user-requested).** Coverage, resolutions,
-   access methods/APIs, formats (GeoTIFF/COG), licensing.
+Wear the HR monitor as continuously as the charge cycle allows; mine passive
+data for baseline physiology.
 
-(Dropped: the earlier "graceful-degradation fallbacks" research item — per CP3,
-features just gate on/off, so no fallback-derivation research is needed.)
+- **Resting HR** from the lowest sustained HR — a strong fitness/recovery/illness
+  signal; feeds F2/F9.
+- **Max HR** — *caveat:* true HRmax only appears at near-max effort, never at
+  rest. Keep an *observed* max from hard sessions; use an age formula only as a
+  prior until a real max is seen; label which is which. Anchors zones for F1/F2.
+- **Overnight HRV** — per-beat RR already available in the device's HRV mode
+  (`scosche-rhythm24.md`); nighttime rMSSD is the standard recovery metric.
+  Almost-free. Confirm 24/7 HRV mode is OK for battery.
+- **Sleep** — sleep/wake + duration (rough staging) from HR+HRV+actigraphy.
+  Promise timing/duration confidently, stages loosely.
+
+**Constraints:** daily charge window (surface the gap); rely on the device's
+**onboard FIT recording + periodic background sync** rather than streaming 24/7
+(BLE drops then don't matter); skin tolerance. Onboard-storage full-behavior is
+an open Q in `scosche-rhythm24.md`.
+
+## F5 — Medication tracking + PK concentration model · `scoped` · research in
+
+Log daily medication (author takes amphetamines daily) and model estimated
+**current blood concentration** C(t), then learn how it correlates with
+physiology and performance. Concrete PK parameters and per-formulation models
+are in [research/02](research/02-medication-pk.md).
+
+- **Log:** dose (mg), time, and **formulation** (IR / Adderall XR two-pulse /
+  Mydayis / **Vyvanse prodrug** — each has its own model in the report).
+- **PK model:** research recommends a **one-compartment** model (resolves our
+  earlier open question), with multi-dose superposition. d-amphetamine clearance
+  is **strongly urine-pH dependent** — a real covariate. **UI must be honest:
+  model estimate, not a blood measurement.**
+- **Why it matters — a confounder for everything:** raises HR/BP (bias in F1
+  zones and F2 → enter as a **covariate**); suppresses appetite (F3); disrupts
+  sleep (F4).
+- **Author's observation — now tentatively supported:** the research finds the
+  acute HR effect during exercise is an **offset, not a slope change**, matching
+  the author's report that effort→HR feels unchanged on/off the drug while
+  *baseline arousal* shifts. So concentration should modulate a resting/arousal
+  term, not rescale the HR-effort curve. (Still "tentative" in the literature —
+  validate against the author's own data.)
+- **Personal calibration:** **MAP-Bayesian / MIPD** — start from population PK,
+  refine to the individual as data accumulates (answers "can we calibrate?").
+- **Safety (responsible, not alarmist):** stimulants + hard exercise raise
+  cardiac load and impair thermoregulation (heat-risk → F8/F12). A tracking aid,
+  **not medical advice**.
+
+**Open questions:** which formulation(s)? · sensitive-data storage/privacy.
+
+## F3 — Diet tracking + energy balance · `idea` · research in
+
+Fold in diet/nutrition tracking and pair it with run burn to track **energy
+balance (surplus/deficit)**.
+
+1. **Photo food logging** → calories/carbs/protein via a vision model (latest
+   Claude models are strong; see the `claude-api` skill before wiring the API).
+   *Hard part is portion/volume, not identification* → include a quick
+   user-confirm/adjust step; consider a fiducial for scale.
+2. **Accurate run calorie burn.** Essentially F2 solved for energy cost. The
+   **accuracy hierarchy and recommended pipeline** are in
+   [research/01 §10](research/01-physiology-master-equation.md) (individual HR-VO₂
+   calibration beats generic formulas; consumer METs×time is crude — a real
+   differentiator).
+3. **Energy-balance ledger.** Intake − expenditure (BMR via Mifflin-St Jeor +
+   activity + run burn) → surplus/deficit *trends*. Body weight is both an
+   **input** to burn (§Model) and the **output** F3 manages.
+
+**Open questions:** first-class feature or companion app? · privacy of food
+photos + body metrics.
+
+## F8 — Auto-ingest weather (esp. humidity) · `idea`
+
+Pull ambient conditions from a weather API — temperature is a direct F2 input.
+**Humidity is a separate channel from temperature** and matters greatly for
+thermoregulation (research/01 §8) → use wet-bulb / WBGT, not just °. Also: wind
+(routing), AQI/pollen (breathing). Feeds F2 and F12.
+
+## F12 — Heat-safety advisor · `idea` · tailored
+
+Combine WBGT/humidity (F8) + current medication concentration (F5) + exertion
+(Physiological Strain Index, research/01 §8) to flag genuinely risky heat.
+Specific to this user: amphetamines impair thermoregulation (F5), so heat risk
+is elevated. Informational.
+
+## F14 — Health anomaly flags from RR data · `idea`
+
+Use the 24/7 per-beat RR stream (F4) to flag irregular-beat patterns or an
+unexplained RHR spike (illness / overtraining / arrhythmia-like).
+**Informational, not diagnostic.**
+
+---
+
+# Training guidance
+
+## F6 — Dynamic / adaptive training guidance · `scoped` · research in
+
+Reject the rigid "interview → fixed 12-week plan, fall behind = tough luck"
+model. Decide each session **day-of (or day-prior)** from current state, so a
+missed day doesn't break the schedule. Full survey in
+[research/03](research/03-adaptive-training.md).
+
+- **Rolling horizon, not a frozen calendar:** keep a flexible long-range
+  *skeleton* (goal + phase + weekly shape); only *commit* a workout the day
+  before/of.
+- **Auto-regulation** from *readiness* (F9). HRV-guided training is
+  research-backed (modest but real); the report gives a concrete decision rule.
+- **Engine — what the research says to ship:**
+  - **Performance Management Chart (CTL/ATL/TSB)** from the Banister
+    fitness-fatigue model — the practical, shippable version.
+  - **ACWR as a soft warning only** (recent statistical critiques — don't gate
+    hard on it).
+  - Load via **TRIMP** (HR), **TSS/rTSS** (pace/power), and **session-RPE**.
+  - **Don't hard-code 80/20** — expose intensity distribution (polarized /
+    pyramidal / threshold) as a user/coach choice; for sub-elite, pyramidal and
+    polarized are interchangeable and both beat threshold-heavy.
+  - **Pace zones are deterministic — no ML needed.**
+- **Planner architecture:** rule/template engine (workout library, sequenced by
+  periodization rules, scaled to current fitness from F11); optionally
+  **LLM-with-hard-guardrails** given the rich per-day context.
+
+**Tensions / open questions:** goal races need *some* forward structure →
+"goal-anchored skeleton + day-of commitment"; don't over-react to single-day
+readiness noise; cold start before personal data → lean on population rules.
+
+---
+
+# Routes & terrain
+
+## F7 — Elevation-aware route designer · `scoped` · research in
+
+Generate routes within a user-defined area (typically a radius from home),
+accounting for hills, with road-level preferences. Engine comparison, schemas,
+and OSM tag model in [research/04](research/04-routing-elevation.md); elevation
+data in [research/05](research/05-usgs-3dep-lidar.md).
+
+- **Hill awareness, two modes:** *find flat* (minimize gain — slope-weighted
+  graph) or *account for hills* (report the profile and, via F2 + GAP, give
+  expected pace/effort/time; optionally adjust distance so effort matches the
+  session).
+- **Road preferences:** mark **favorite** / **hated** roads as per-road routing
+  weights. The report gives a persistence schema (store OSM way ID **and**
+  geometry — IDs change) and tap-to-way snapping endpoints.
+
+**What the research settled:**
+- **Don't solve the "perfect loop of distance D" exactly — it's NP-hard.** Use
+  the geometric heuristic (waypoints on a circle, route through them, penalize
+  reused edges).
+- **Self-hosted GraphHopper (open-source) is the recommended core** — the only
+  permissively-licensed engine with **both** native round-trip generation and a
+  precise, declarative slope-aware weighting model. (BRouter = most tunable
+  energy model but no native round-trip; Valhalla = simplest grade knob, MIT;
+  ORS = built-in round-trip but coarse grade + GPLv3 copyleft.)
+- **Elevation: USGS 3DEP** (US, public domain) — **COG DEMs on AWS** for whole
+  route profiles, **EPQS** for single-point queries; 1 m where available. Use
+  the DEM for *planned* grade, the barometer for *live* grade.
+- **Map data:** OpenStreetMap (surface/highway/foot tags for run-quality
+  weighting).
+
+**Notes:** rank **multiple candidate loops** (flatness / favorites / variety);
+ties to F6 (day's session auto-requests a matching route) and F3 (predicted
+burn); later: surface preference, safety/lighting, avoid-recent-routes.
+
+---
+
+# Conveniences
+
+## F15 — Auto shoe-mileage tracking · `idea`
+
+Track mileage per shoe pair, warn at replacement mileage. Foot pods could
+**auto-detect which shoes** are worn.
+
+## F16 — Locomotor-respiratory coupling training · `idea`
+
+Once the breathing band exists, coach a breath:step rhythm (e.g. 3:2) from the
+respiration sensor + cadence. Niche but researched; sensors will be on hand.
+
+---
+
+# Research
+
+All five prior-art areas have been researched and synthesized into cited reports
+under [`research/`](research/) (see `research/README.md` for the index). They
+back F2/F3 (physiology), F5 (PK), F6/F9/F11 (training), and F7 (routing +
+elevation). The reports flag any claim that failed independent verification —
+spot-check before shipping.

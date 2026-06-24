@@ -216,3 +216,55 @@ Treat as a hypothesis to confirm from the runner's own data, not a fixed prior.
   - Sensitive health data — storage/privacy handling (same concern as F3 diet).
   - Can we *calibrate* the personal PK from observed HR response, or only
     assume population parameters?
+
+### F6 — Dynamic / adaptive training guidance · `idea` · research-first
+
+Reject the rigid "interview → fixed 12-week plan, fall behind = tough luck"
+model. Instead, decide each session **day-of (or day-prior)** based on current
+state, so a missed day doesn't throw the whole schedule into disarray.
+
+- **Core idea — rolling horizon, not a frozen calendar.** Keep a flexible
+  long-range *skeleton* (goal + phase + rough weekly shape) but only *commit* a
+  specific workout the day before / day of. Life happens; the plan absorbs it
+  instead of breaking.
+- **Auto-regulation is the key concept** (the thing other apps mostly lack):
+  pick today's session from *readiness*, which we already have the inputs for —
+  overnight HRV / RHR / sleep (F4), recent load, RPE, and medication state
+  (F5). HRV-guided training is research-backed (often matches or beats fixed
+  plans). This is a natural consumer of the rest of the app's data.
+- **"Different plans with different priorities"** ⇒ a workout/template library +
+  selection logic parameterized by goal (5k vs marathon vs general fitness vs
+  return-from-layoff), phase, and the runner's current fitness.
+
+**How automated plan generators actually work (for the research deliverable —
+user said they don't know; document it):**
+  - Most are **rule/template engines**: a library of workout types, sequenced by
+    periodization rules, scaled to current fitness (from a recent race or a
+    threshold/critical-speed test), with paces derived from threshold/CS.
+  - Underlying training-science to survey:
+    - *Periodization:* linear vs. block vs. **daily-undulating** (DUP);
+      macro/meso/microcycles. The user wants the auto-regulated end of this.
+    - *Load quantification:* TRIMP (HR), TSS/rTSS (pace/power), session-RPE
+      load; **Acute:Chronic Workload Ratio** (note recent critiques) for
+      ramp-rate / injury risk.
+    - *Fitness–Fatigue (Banister impulse-response) & PMC* (CTL/ATL/TSB =
+      fitness/fatigue/form). This is itself a *dynamical model* — same flavor as
+      F2, and a strong candidate engine for "how much can I do today."
+    - *Intensity distribution:* polarized 80/20 (Seiler) vs. threshold vs.
+      pyramidal.
+    - *Progression / safety rules:* sensible ramp limits, recovery weeks,
+      taper.
+  - Advanced approaches to note: optimization / RL planners, and **LLM-driven
+    planning with hard guardrails** (the rules above as constraints) — fits an
+    app that already has rich per-day context.
+
+**Design tensions / open questions:**
+  - Goal races still need *some* forward structure (you can't fully wing a
+    marathon build) — resolve as "goal-anchored skeleton + day-of commitment,"
+    not zero planning.
+  - Don't over-react to single-day readiness noise — smooth, like F1's HR cue.
+  - Cold start: how to guide before enough personal data exists (lean on the
+    population rules, personalize as F2/F4 data accumulates).
+  - Ties together the whole app: F2 (what pace/load is appropriate), F4
+    (readiness), F5 (medication as a state variable), F3 (fueling for the
+    session).

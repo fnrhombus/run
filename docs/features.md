@@ -128,3 +128,38 @@ tracking** and pair it with run calorie burn to track **energy balance
   - Privacy: food photos + body metrics are sensitive; where is this stored?
   - For "accurate" burn, an individual HR-VO2 calibration (or the F2 model)
     matters far more than picking a fancier off-the-shelf formula.
+
+### F4 — Near-24/7 wear: resting HR, max HR, sleep · `idea`
+
+Wear the HR monitor as continuously as the charge cycle allows and mine the
+passive data for baseline physiology.
+
+- **Resting HR (RHR).** Derive from the lowest sustained HR (typically during
+  sleep / early morning), tracked as a *trend* — RHR is a strong fitness /
+  recovery / illness signal (a spike often precedes feeling sick or means
+  overtraining). Achievable from passive wear. Good input to F2/F3 recovery
+  state and RMR baseline.
+- **Max HR.** *Caveat:* true HRmax only appears during near-maximal effort and
+  is rarely captured at rest — passive wear won't find it. Better plan:
+  detect *observed* max from hard run sessions, keep a running maximum, and use
+  an age-based formula (e.g. 208 − 0.7·age) only as a prior until a real max is
+  seen. Be honest in the UI about which it is. Accurate HRmax/RHR then anchor
+  the HR zones used by F1 and F2.
+- **Overnight HRV.** We already get per-beat RR in the device's HRV sport mode
+  (see `scosche-rhythm24.md`) — nighttime HRV (e.g. rMSSD) is the standard
+  recovery-readiness metric. Strong, almost-free win given the data is already
+  there. Confirm running HRV mode 24/7 is acceptable for battery.
+- **Sleep.** Estimate sleep/wake and duration (and *rough* staging) from HR +
+  HRV + the armband's motion/actigraphy. Research-backed but consumer accuracy
+  is limited — promise sleep timing/duration confidently, stages only loosely.
+
+**Open questions / constraints:**
+  - *Battery & charging window:* needs a daily charge slot; plan for and
+    surface the inevitable data gap. Does HRV mode drain faster?
+  - *Onboard storage & sync:* 24/7 logging is a lot of data. Device records to
+    a FIT file onboard ("hundreds of hours" claimed, full-storage behavior
+    undocumented — open Q in the Scosche notes). Need a reliable background
+    BLE sync cadence so storage doesn't fill and the phone DB stays current.
+  - *Continuous capture:* live BLE drops are fine here — rely on the onboard
+    FIT record for completeness, sync periodically rather than streaming 24/7.
+  - Skin tolerance / rotation for all-day optical wear.

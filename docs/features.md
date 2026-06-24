@@ -268,3 +268,45 @@ user said they don't know; document it):**
   - Ties together the whole app: F2 (what pace/load is appropriate), F4
     (readiness), F5 (medication as a state variable), F3 (fueling for the
     session).
+
+### F7 — Elevation-aware route designer · `idea`
+
+Generate running routes within a user-defined area (typically a radius from
+home), accounting for hills, with road-level preferences.
+
+- **Area constraint:** routes confined to a region — most likely a radius from
+  home (also support custom-drawn areas later).
+- **Hill awareness, two modes:**
+  - *Find flat* when a flat route is wanted — minimize total elevation gain
+    (weight the road graph by grade).
+  - *Account for hills* otherwise — report the elevation profile and, via the
+    F2 model + grade-adjusted pace, give an **expected pace / effort / time**
+    for the specific hills on that route (and optionally adjust target distance
+    so effort matches the intended session).
+- **Road preferences:** mark **favorite roads** (prefer) and **hated roads**
+  (avoid / heavy penalty). Per-road weighting applied to the routing cost.
+
+**How round-trip route generation actually works (note for build):**
+  - This is **loop generation**, not A→B shortest path — generating a closed
+    loop of a *target distance* from a start point is related to the
+    (NP-hard) orienteering / arc-routing problem, so engines use heuristics.
+  - Existing engines that already do round-trip + elevation-weighted routing:
+    **GraphHopper** (round-trip routing + custom elevation weighting),
+    **BRouter** (excellent custom profiles, elevation-aware, self-hostable),
+    **Valhalla**, **OpenRouteService** (round-trip + avoid features). Prefer
+    self-hostable (BRouter/GraphHopper) — cost + privacy, fits the no-paywall
+    ethos.
+  - **Map/road data:** OpenStreetMap (free; tags for surface, highway class,
+    foot access — also lets us prefer footpaths / avoid busy roads later).
+  - **Elevation data:** a DEM (SRTM/Copernicus) or terrain API; needed both to
+    weight for "flat" and to build the grade profile that feeds F2.
+
+**Open questions / notes:**
+  - Favorite/hated roads need stable identity — store by OSM way ID *and*
+    geometry (way IDs change); snap user taps to the nearest way.
+  - Likely want **multiple candidate loops ranked**, not one answer
+    (by flatness, by how much they use favorites, by variety).
+  - Ties to F6: the day's planned session ("flat easy 8k") can auto-request a
+    matching route; ties to F3 for predicted burn on that route.
+  - Possible later: surface preference (road vs trail), safety/lighting,
+    avoid-repeating-recent-routes for variety.

@@ -83,6 +83,19 @@ reconstruct a feature's data from a different sensor set.
   fine — that's about calibration from few runs, not about substituting for
   missing live sensors.)
 
+> **PARKED — possible future direction (intentionally deferred, not rejected).**
+> Full *graceful degradation* — reconstructing a feature's data from a different
+> set of available sensors — **is technically possible** and was deliberately
+> dropped for now (simplicity). If revisiting later, it would look like:
+> capability *tiers* (phone-only GPS+baro+IMU → +HR → +foot pod/breathing/SmO₂)
+> with per-variable fallback estimators (pace: GPS-only → GPS+foot-pod fusion;
+> HRmax: age formula → observed; calorie burn: METs → HR→VO₂ → calibrated F2;
+> grade: DEM → barometer), and F2 producing a best estimate from *any subset* of
+> inputs with uncertainty that widens as inputs drop (a Bayesian / latent-
+> variable framing where a missing sensor becomes a prior rather than a hard
+> failure). **Reminder to future reviewer: this door is open if/when you want
+> it.**
+
 ### F1 — Haptic HR-zone coaching · `idea`
 
 Phone vibrates to tell the runner to speed up or slow down so they hold a

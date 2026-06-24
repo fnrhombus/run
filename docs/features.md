@@ -16,6 +16,21 @@ Context driving the project:
 
 <!-- New features appended below as the user describes them. -->
 
+### F0 — Unified local-first data store + open export · `idea` · FOUNDATIONAL
+
+Not a user-facing feature so much as the substrate everything else needs: a
+clean, timestamped, multi-channel **time-series log of every sensor stream**,
+stored on-device and exportable in open formats (FIT / GPX / Parquet / CSV).
+
+- Every other feature (F2 master equation, F3 burn, F5 PK, F6 planner) is
+  downstream of this — they're only as good as the logged data.
+- Purest expression of the project's ethos: **own all your data, forever**, no
+  cloud lock-in, no paywall.
+- Design notes: normalize sources into named channels (`hr`, `rr`, `speed`,
+  `cadence`, `grade`, `respRate`, `smo2`, `medConc`, …) on a common clock;
+  generalizes the two-channel Scosche design (see `scosche-rhythm24.md`).
+- **Lock this in regardless** — it's the foundation.
+
 ### F1 — Haptic HR-zone coaching · `idea`
 
 Phone vibrates to tell the runner to speed up or slow down so they hold a
@@ -320,6 +335,81 @@ home), accounting for hills, with road-level preferences.
     matching route; ties to F3 for predicted burn on that route.
   - Possible later: surface preference (road vs trail), safety/lighting,
     avoid-repeating-recent-routes for variety.
+
+---
+
+## Proposed additions (Claude-suggested, user said "save everything")
+
+### F8 — Auto-ingest weather (esp. humidity) · `idea`
+
+Pull ambient conditions from a weather API automatically — temperature is a
+direct input to F2, so don't make the user guess it.
+- **Humidity matters more than dry temperature** for thermoregulation; use
+  wet-bulb / heat index, not just °. Also useful: wind (route planning),
+  AQI/pollen (breathing).
+- Nearly free to add; makes F2 honest about hot, muggy days. Feeds F12.
+
+### F9 — Daily readiness score · `idea` · lock-in candidate
+
+Synthesize overnight HRV + RHR + sleep (F4), recent training load, and
+medication state (F5) into one number that **drives F6's day-of decision**.
+- This is the concrete glue that turns "adaptive training" into something that
+  actually picks today's workout. All inputs already exist in the system.
+- Smooth it — don't react to single-day noise (same lesson as F1).
+
+### F10 — Running power from own IMUs · `idea`
+
+Derive a real-time **running power** metric from the DIY foot/belt IMUs +
+grade (what Stryd sells for ~$200; we're building the sensors anyway).
+- Power responds to grade *instantly* — none of HR's 10–30 s lag — so it's
+  arguably a **better pacing target than HR for the hill scenario** (F1/F2).
+- Could drive a haptic *power*-zone mode (extends F1).
+
+### F11 — Calibration field tests · `idea`
+
+Periodic structured tests (critical-speed / threshold) to fit the personal
+parameters of F2 and anchor F6.
+- Without this the master equation is uncalibrated.
+- Byproduct: a race-time predictor (Riegel) for free.
+
+### F12 — Heat-safety advisor · `idea` · tailored
+
+Combine wet-bulb/humidity (F8) + current medication concentration (F5) +
+exertion to flag genuinely risky heat conditions.
+- Specific to this user: amphetamines impair thermoregulation (F5 safety note),
+  so heat risk is elevated vs. a typical runner. Informational, not alarmist.
+
+### F13 — Transparent "why" explanations · `idea` · design principle
+
+Every recommendation explains itself — e.g. *"ease off: grade hit 6% and you're
+4 bpm over zone."*
+- Directly answers the project's motivation (hating opaque, paywalled apps).
+- Also a design constraint favoring the **grey-box** model in F2 — black boxes
+  can't explain themselves.
+
+### F14 — Health anomaly flags from RR data · `idea`
+
+Use the 24/7 per-beat RR stream (F4) to flag irregular-beat patterns or an
+unexplained RHR spike (illness / overtraining / arrhythmia-like patterns).
+- Frame carefully as **informational, not diagnostic**. Real signal exists in
+  data we'll already have.
+
+### F15 — Auto shoe-mileage tracking · `idea`
+
+Track mileage per shoe pair and warn at replacement mileage.
+- Foot pods could **auto-detect which shoes** are worn. Trivial, genuinely
+  useful.
+
+### F16 — Locomotor-respiratory coupling training · `idea`
+
+Once the breathing band exists, coach a breath:step rhythm (e.g. 3:2) using the
+respiration sensor + cadence. Niche but researched; sensors will be on hand.
+
+### F17 — Audio coaching · `idea`
+
+Voice cues via earbuds as a richer complement to haptics (F1) — the phone's
+already strapped to the arm. Can convey more than buzz patterns (splits, pace,
+"ease off") without looking at the screen.
 
 ---
 

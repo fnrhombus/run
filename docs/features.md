@@ -3,14 +3,13 @@
 A personal running/training app for the author and a few close friends (no
 public release intended). This doc consolidates the design discussion: the
 vision, the architecture, the model at its core, and the feature set. Where a
-claim is backed by the prior-art research, it links to the relevant report in
+claim is backed by prior-art research, it links to the relevant report in
 `research/`.
 
 **Companion docs**
 - `scosche-rhythm24.md` — BLE protocol for the Scosche Rhythm 24 HR armband.
 - `hardware.md` — DIY build / buy / skip decisions for every sensor.
-- `stack.md` — tech-stack & architecture preferences (React, event sourcing,
-  Azure).
+- `stack.md` — tech-stack & architecture preferences (React, event sourcing, Azure).
 - `research/` — cited prior-art research reports (one per backlog area).
 
 ## Why this project exists
@@ -18,8 +17,7 @@ claim is backed by the prior-art research, it links to the relevant report in
 - Existing apps **paywall features** and/or **compute pace badly** (jumpy GPS
   instantaneous pace is the usual culprit — see `hardware.md` for the fix).
 - Goal: a better personal tool — especially at pace, calorie burn, and adaptive
-  guidance, where the incumbents are weak — without their paywalls or weak pace
-  math.
+  guidance, where incumbents are weak — without their paywalls or poor pace math.
 
 ## Hardware context
 
@@ -32,8 +30,7 @@ claim is backed by the prior-art research, it links to the relevant report in
 ## Status legend
 
 `idea` (noted) · `scoped` (design agreed) · `building` · `done`.
-Flags: **lock-in** (commit regardless) · **research-first** (now backed by
-`research/`).
+Flags: **lock-in** (commit regardless) · **research-first** (now backed by `research/`).
 
 ---
 
@@ -71,8 +68,8 @@ The substrate everything else needs: a clean, timestamped, multi-channel
 open formats (FIT / GPX / Parquet / CSV).
 
 - Every model and feature is downstream of this — they're only as good as the
-  logged data. A clean unified log is what makes the F2 model, the projections,
-  and the analytics possible at all.
+  logged data. A clean unified log is what makes the F2 model, projections,
+  and analytics possible at all.
 - Open-format export keeps the data portable for offline analysis and model
   fitting.
 - Normalize sources into named channels (`hr`, `rr`, `speed`, `cadence`,
@@ -91,11 +88,11 @@ haptics/audio), pace/effort is the control output.
 - HR has **dead time + first-order lag**, so naïve PID on HR oscillates — the
   failure mode F1's dead-band guards. **Research confirms the plant**: a
   first-order-plus-dead-time response (a two-time-constant structure fits
-  better), see [research/01 §7](research/01-physiology-master-equation.md).
+  better) — see [research/01 §7](research/01-physiology-master-equation.md).
 - Right architecture: **feedforward** from grade (known instantly via
   barometer/map) through the **F2 model as the plant model**, with HR
   **feedback only to trim**. The research's Hammerstein model is **invertible
-  for feedforward pace** — exactly this design, and its "central design fact."
+  for feedforward pace** — exactly this design, its "central design fact."
 - Endpoint: **Model Predictive Control** — use F2 to look ahead over a route's
   grade profile (F7) and plan a pace trajectory that holds HR in zone. MPC
   handles dead time by predicting, not reacting.
@@ -150,9 +147,9 @@ favors the grey-box model (CP2): black boxes can't explain themselves.
 ## F2 — Personal physiological "master equation" · `scoped` · research in
 
 Fit a personal model relating the runner's key variables so it can be **solved
-for any one of them given the others** (CP2). Full prior-art and the concrete
-equations to use are in
-[research/01](research/01-physiology-master-equation.md); summary below.
+for any one of them given the others** (CP2). Full prior-art and concrete
+equations are in [research/01](research/01-physiology-master-equation.md);
+summary below.
 
 - **Variables:** pace/speed, ambient temperature (& humidity, F8), grade, heart
   rate, breathing, subjective effort (RPE/Borg), and body mass (an input — see
@@ -169,7 +166,7 @@ equations to use are in
 - **Metabolic baseline:** ACSM running VO₂ equation (verified); VO₂→kcal via the
   caloric-equivalent-of-O₂ pipeline.
 - **Capacity & reserve:** the **Critical Speed / Critical Power** 2-parameter
-  model (verified) — this is the CS + D′ pair below.
+  model (verified) — the CS + D′ pair.
 - **HR dynamics:** first-order + dead-time (two-time-constant better);
   **invertible Hammerstein** for feedforward — see CP1/CP2.
 - **Heat/humidity:** treat temperature and humidity as **two separate channels**;
@@ -181,7 +178,7 @@ equations to use are in
 ### Personal coefficients ("current strength level")
 
 Roughly **5–8 coefficients**, four roles. MVP starts with ~5 (CS, D′, economy,
-HRmax, RHR) + one HR time-constant for the control loop; add the rest as data
+HRmax, RHR) + one HR time-constant for the control loop; add more as data
 justifies.
 
 | Role | Coefficient(s) | Notes |
@@ -276,7 +273,7 @@ without looking at the screen.
 ## F11 — Calibration field tests · `idea`
 
 Periodic structured tests (critical-speed / threshold) to fit F2's coefficients
-and anchor F6. Without these, the master equation is uncalibrated. The CS/CP test
+and anchor F6. Without these the master equation is uncalibrated. CS/CP test
 protocols and race-pace mapping are in
 [research/01 §5](research/01-physiology-master-equation.md). Byproduct: a
 race-time predictor (Riegel) for free.
@@ -369,8 +366,8 @@ photos + body metrics.
 
 Pull ambient conditions from a weather API — temperature is a direct F2 input.
 **Humidity is a separate channel from temperature** and matters greatly for
-thermoregulation (research/01 §8) → use wet-bulb / WBGT, not just °. Also: wind
-(routing), AQI/pollen (breathing). Feeds F2 and F12.
+thermoregulation (research/01 §8) → use wet-bulb / WBGT, not just °C. Also:
+wind (routing), AQI/pollen (breathing). Feeds F2 and F12.
 
 ## F12 — Heat-safety advisor · `idea` · tailored
 

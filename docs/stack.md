@@ -1,8 +1,8 @@
 # Tech stack & architecture preferences
 
-Author's stated preferences and the open stack decision. The **stack choice
-itself (React vs. F#) is evaluated in `implementation-plan.md`** — this file just
-captures the preferences and the patterns that hold regardless of language.
+The author's stated preferences and open stack decisions. The **stack choice
+itself (React vs. F#) is evaluated in `implementation-plan.md`** — this file
+captures the preferences and patterns that hold regardless of language.
 
 ## Stated preferences
 
@@ -16,7 +16,7 @@ captures the preferences and the patterns that hold regardless of language.
   timestamped stream data.
 - **Frontend / language is an open decision** — evaluated as **React** vs. an
   **F# solution** (which may or may not use React, e.g. via Fable) vs. any
-  genuinely-better option. See `implementation-plan.md`.
+  genuinely better option. See `implementation-plan.md`.
 
 > Correction note: an earlier draft of this file asserted a "local-first,
 > own-your-data, no-cloud-lock-in" ethos. The author did **not** state that; it

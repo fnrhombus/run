@@ -9,6 +9,7 @@ DIY-vs-purchase decisions for the `run` project's sensors. Constraints:
 
 For every sensor, the **PCB + microcontroller is the cheap, easy part**. The real
 cost is one of two things:
+
 - **(a) firmware / signal-processing / validation** — DIY *wins*, because that's
   the IP we're building anyway (and it's where the value is).
 - **(b) a precision analog front-end** — DIY *loses*, because a mass-produced
@@ -34,11 +35,11 @@ cost is one of two things:
   respiratory rate + pattern for a few dollars vs. hundreds (Hexoskin).
 - True inductance RIP is harder (LC oscillator + frequency counter) and
   unnecessary; stretch is plenty for rate + relative depth.
-- Only hard part is tidal-volume *calibration* — a software problem.
+- The only hard part is tidal-volume *calibration* — a software problem.
 
 ### Barometer (grade) — DIY-able, but just use the phone
 - BMP390/BMP581 is a ~$3 I²C chip, but the Android phone already has one.
-- Only build a dedicated unit later if a body-mounted high-precision one is
+- Only build a dedicated unit later if a body-mounted high-precision barometer is
   wanted. For now: skip the build, use the phone.
 
 ---
@@ -46,9 +47,9 @@ cost is one of two things:
 ## BUY (or read commercial data) — DIY not worth it
 
 ### SmO₂ / muscle oxygen (NIRS) — the #1 do-not-DIY
-- Needs precise multi-wavelength LEDs, calibrated photodiodes, low-noise
+- Needs precise multi-wavelength LEDs, calibrated photodiodes, a low-noise
   transimpedance front-end with ambient-light rejection, and a validated
-  modified-Beer-Lambert model w/ pathlength correction. This is what
+  modified-Beer-Lambert model with pathlength correction. This is what
   Moxy/Train.Red spent years on.
 - DIY (MAX30101-style) gives relative trends at best, not validated SmO₂%.
 - **Verdict:** buy (Train.Red = cheaper validated option) if you need real SmO₂,
@@ -63,7 +64,7 @@ cost is one of two things:
 
 ### Optical HR — already solved (Scosche), don't build
 - Motion-artifact rejection on optical HR during running is genuinely hard
-  (why wrist HR is bad running). Already own a good one + reverse-engineered it.
+  (why wrist HR is bad for running). Already own a good one + reverse-engineered it.
 - *Optional:* a single-lead ECG (**AD8232**, ~$5) on a chest strap is *easier*
   to get clean beat timing/HRV from than optical — DIY-able if better RR is ever
   wanted, but the Scosche already provides RR.

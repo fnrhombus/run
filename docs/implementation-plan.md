@@ -12,7 +12,7 @@ Goals, in priority order:
 - **Make F0 real.** A durable, append-only, multi-channel timestamped event log on one clock is the substrate; every other feature is a projection of it.
 - **Fix the founding complaint** — jumpy pace — via GPS + foot-pod fusion (M3).
 - **Coach hands-free** with HR-zone haptics under an Android foreground service, screen off (M4).
-- **Stand up the physiological core** — the invertible grey-box F2 model and calibration (M5) — then the daily-state inputs, readiness, routing, and the rest.
+- **Stand up the physiological core** — the invertible grey-box F2 model and calibration (M5) — then daily-state inputs, readiness, routing, and the rest.
 
 Cross-cutting principles carried throughout: **CP1** human-in-the-loop control (feedforward + feedback trim), **CP2** invertibility of F2, **CP3** capability gating (no synthetic fallback — features switch on/off by connected sensors), **CP4** grey-box modeling.
 
@@ -179,8 +179,8 @@ The single hardest axis for this app is **reliable backgrounded BLE with the scr
 The reasoning:
 
 - **The incumbent already clears the two hardest bars well enough.** `react-native-ble-plx` is installed, the Scosche protocol work is done, and the library is itself a wrapper over the same native Android BLE APIs that native Kotlin would call directly. With a correctly written foreground service (`FOREGROUND_SERVICE_CONNECTED_DEVICE`), auto-reconnect (community-fork patterns), durable on-device buffering, and per-OEM battery-exemption prompts, screen-off BLE is achievable without leaving RN. Native Kotlin's edge here is **real but not decisive** — and it costs a full rewrite plus re-porting the protocol.
-- **Both F# UI flavors fail on the part that is most of the work.** Fabulous rests on a lagging, lightly-maintained, .NET-8-only UI library whose successor is on-hold; Fable's RN binding layer has been abandoned since 2018 and conflicts head-on with the repo's hard Expo-v56 mandate. Picking either means the author near-solo-maintains the riskiest layer of the app. The prompt's own warning applies: do not boost a stack because the author likes the language when the language sits on the weakest mobile foundation.
-- **Option 3 confirms there is no killer stack.** Every cross-platform alternative ends up needing native Android BLE for reliable screen-off operation, and the only F#-respecting alternative (.NET mobile) has the *thinnest* mobile-BLE maturity. So the honest answer to "does a killer stack beat them?" is **no.**
+- **Both F# UI flavors fail on the part that is most of the work.** Fabulous rests on a lagging, lightly-maintained, .NET-8-only UI library whose successor is on-hold; Fable's RN binding layer has been abandoned since 2018 and conflicts head-on with the repo's hard Expo-v56 mandate. Picking either means the author near-solo-maintains the riskiest layer of the app — so language affinity alone shouldn't win when that language sits on the weakest mobile foundation.
+- **Option 3 confirms there is no killer stack.** Every cross-platform alternative ends up needing native Android BLE for reliable screen-off operation, and the only F#-respecting alternative (.NET mobile) has the *thinnest* mobile-BLE maturity. The honest answer to "does a killer stack beat them?" is **no.**
 - **The hybrid honors the F# interest where it actually pays off.** The CQRS/ES write model and the compute-heavy F2 fit are F#'s home turf — discriminated unions for events/commands, exhaustive matching for fold/apply, units-of-measure for the physiology, native-fast numerics, and a mature .NET ecosystem (Marten/EventStoreDB + first-class Azure SDKs). Running these as an F# Azure Functions backend over the shared event log gives most of the F# upside with none of the mobile-UI risk. The device/UI/BLE layer stays TypeScript.
 
 If the author values F#-end-to-end purity *over* shipping velocity and is willing to own the UI-layer maintenance risk, **Fabulous (2a)** is the more defensible of the two F# UI options (Plugin.BLE genuinely supports a `connectedDevice` foreground service, vs. Fable's abandoned bindings) — but that is a deliberate trade of risk for affinity, not the lower-risk path. **This is the author's call; the plan below stays valid whichever stack is chosen** because every milestone is expressed against the §2 contracts, and §5 calls out exactly where React and F# diverge.
@@ -292,7 +292,7 @@ M1 is the thin vertical slice: **BLE HR connect → GPS → event-store write �
 
 **T1 — Custom dev build / app shell.**
 A run-able Android app shell with start/stop navigation. This is *not* Expo Go (BLE needs a custom dev build via `expo prebuild`).
-- *React:* Expo SDK 56 / RN 0.85 (already scaffolded); add the `@config-plugins/react-native-ble-plx` plugin (pin the latest to avoid the SDK-56 config-evaluation bug, dotintent #1339); `expo prebuild`; EAS/local dev build.
+- *React:* Expo SDK 56 / RN 0.85 (already scaffolded); add the `@config-plugins/react-native-ble-plx` plugin (pin a known-good version and verify it evaluates cleanly under SDK 56 before relying on prebuild); `expo prebuild`; EAS/local dev build.
 - *F#:* a Fabulous.MauiControls (.NET 8) Android project, or — if hybrid — keep the RN shell and add an F# Azure backend later. No prebuild; instead the MAUI Android build chain.
 
 **T2 — BLE HR driver (SAL, `hr`+`rr` channels).**
@@ -306,7 +306,7 @@ Foreground location stream → normalized samples on the same clock as T2; light
 - *F#:* MAUI `Geolocation` / platform `LocationManager` via interop.
 
 **T4 — Event store v0 (stack-agnostic core).**
-Append-only, timestamped, multi-channel log on one clock, implementing the §2.3 envelope (`eventId`/`streamId`/`seq`/`type`/`t`/`schemaV`/`payload`). Single `streamId` per run; per-stream `seq` for gap detection. On-device only at M1; designed to generalize beyond two channels (do **not** hardcode HR+GPS).
+Append-only, timestamped, multi-channel log on one clock, implementing the event envelope (`eventId`/`streamId`/`seq`/`type`/`t`/`schemaV`/`payload`). Single `streamId` per run; per-stream `seq` for gap detection. On-device only at M1; designed to generalize beyond two channels (do **not** hardcode HR+GPS).
 - *Shared:* the channel vocabulary and envelope are identical across stacks — this is the seam that keeps the plan valid either way.
 - *React:* `expo-sqlite`/`op-sqlite` append-only table (WAL), or a minimal hand-rolled log; TS event/command types.
 - *F#:* local SQLite/LiteDB journal; events as discriminated unions (the natural fit). The author's command library can already shape `RunStarted`/`RunStopped` here if desired.
@@ -352,10 +352,10 @@ Real-hardware smoke test: HR connects and streams, GPS produces a moving pace, b
 
 **Top risks (with mitigations):**
 
-1. **Android background BLE drops / OS killing the foreground service mid-run** (Doze, OEM battery managers; ble-plx history #127/#217/#484/#812/#1177). The dominant operational risk on any stack. *Mitigate:* durable on-device buffering (a sample is logged before it drives the UI), robust foreground-service notification, auto-reconnect (community-fork patterns), per-OEM battery-exemption prompts. Validate on real arm-strapped hardware.
+1. **Android background BLE drops / OS killing the foreground service mid-run** (Doze, OEM battery managers; a long-standing class of react-native-ble-plx background-connection issues). The dominant operational risk on any stack. *Mitigate:* durable on-device buffering (a sample is logged before it drives the UI), robust foreground-service notification, auto-reconnect (community-fork patterns), per-OEM battery-exemption prompts. Validate on real arm-strapped hardware.
 2. **Heavy F2 compute escaping the 16 ms frame budget and freezing the UI.** *Mitigate:* on-device runs **evaluation only**; fitting is cloud-side; push the control loop to a worklet/native module from the start (don't retrofit). RN: `react-native-worklets` (installed). F#: native-fast .NET.
 3. **Haptics fidelity.** `expo-haptics` is preset-only; distinguishable F1 patterns need the native Vibration API. *Mitigate:* verify against Expo v56 and test through a sleeve early (M4).
-4. **Expo SDK-56 + ble-plx config-plugin evaluation bug (dotintent #1339).** *Mitigate:* pin/verify the latest plugin before relying on prebuild (M1/T1).
+4. **Expo SDK-56 + ble-plx config-plugin evaluation risk.** *Mitigate:* pin a known-good plugin version and verify it evaluates cleanly before relying on prebuild (M1/T1).
 5. **DIY hardware availability.** Foot-pod (M3) and breathing band (M16/M9) must physically exist with validated output (`hardware.md`) before their milestones can complete.
 6. **F# UI-layer maintenance** (if chosen). Fabulous.MauiControls lagging / Fable RN bindings abandoned — near-solo maintenance of the riskiest layer. *Mitigate:* prefer the hybrid (F# backend only) unless affinity is the explicit priority.
 7. **Upstream churn.** Expo ships yearly breaking changes (per `AGENTS.md`); ongoing upgrade maintenance for a long-lived personal project. *Mitigate:* pin versions, read the exact versioned v56 docs before writing code, keep the native surface small.

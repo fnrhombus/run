@@ -31,6 +31,56 @@ stored on-device and exportable in open formats (FIT / GPX / Parquet / CSV).
   generalizes the two-channel Scosche design (see `scosche-rhythm24.md`).
 - **Lock this in regardless** — it's the foundation.
 
+---
+
+## Cross-cutting design principles
+
+These aren't single features — they shape F1/F2/F6 and the whole architecture.
+
+### CP1 — The app is a human-in-the-loop control system (F1/F2/F6)
+
+HR-zone is the **setpoint**, the runner is the **actuator** (commanded via
+haptics/audio), pace/effort is the control output.
+- HR has **dead time + first-order lag**, so naïve PID on HR oscillates (chases
+  its own tail up/down hills) — this is the failure mode F1's dead-band guards.
+- Right architecture: **feedforward** from grade (known instantly via barometer/
+  map) through the **F2 model as the plant model**, with HR **feedback only to
+  trim** the residual. That's exactly why F1 can "proactively slow you down"
+  *before* HR drifts.
+- Endpoint: **Model Predictive Control** — use F2 to look ahead over the route's
+  grade profile (F7) and plan a pace trajectory that holds HR in zone across the
+  terrain. MPC handles dead time by predicting, not reacting.
+- The deferred HR-dynamics research is really **plant identification** for this
+  controller (time constants + dead time). Same data, control-theory lens.
+
+### CP2 — The master equation must be fully invertible (extends F2)
+
+F2 must be **solvable for ANY variable** given the others, not just HR-from-pace:
+- "What HR would I need to hold to climb this hill at pace X?"
+- "What pace is sustainable at HR zone Y on this grade/temperature?"
+- "What **subjective effort (RPE)** to maintain to hold target Z?" → the haptic/
+  audio channel can cue a change in *effort*, not only pace.
+- Reinforces the **grey-box / physics-informed** model choice (invertible +
+  interpretable) over a black box that must be inverted numerically.
+
+### CP3 — Graceful degradation: make do with whatever sensors are present
+
+Scope note: private app for the user **and close friends** (no public release
+intended). Friends may have **few or none** of these sensors. Every feature
+must degrade gracefully to whatever hardware is available.
+- Define **capability tiers**: phone-only (GPS + barometer + phone IMU) works;
+  +HR strap is better; +foot pod / breathing / SmO₂ better still.
+- Per-feature fallbacks (best estimate from what's present, honest about it):
+  - *Pace:* GPS-only (noisy) → GPS+foot-pod fusion (smooth).
+  - *HRmax/zones:* age formula → observed max (F4).
+  - *Calorie burn:* METs → HR→VO₂ → fully calibrated F2.
+  - *Grade:* map/DEM (F7) → phone barometer → none.
+- **F2 must produce a best estimate from any subset of inputs**, with
+  uncertainty that *widens* as inputs drop. A Bayesian / latent-variable framing
+  fits naturally — missing sensors become priors rather than hard failures.
+- *Research implication:* for each variable, also capture the cheap fallback
+  method, not just the gold-standard one (added to the backlog below).
+
 ### F1 — Haptic HR-zone coaching · `idea`
 
 Phone vibrates to tell the runner to speed up or slow down so they hold a
@@ -437,3 +487,7 @@ conversation** and run as one batch. Items accumulated so far:
    OSM data model for road preferences.
 5. **USGS 3DEP lidar elevation (F7, user-requested).** Coverage, resolutions,
    access methods/APIs, formats (GeoTIFF/COG), licensing.
+6. **Graceful-degradation fallbacks (CP3).** For each model variable, the cheap
+   phone-only / sensor-absent fallback method and its accuracy cost, plus how to
+   represent missing inputs (Bayesian priors / latent variables) so F2 still
+   solves. (Folds into the physiology pass — same sources.)

@@ -163,3 +163,47 @@ passive data for baseline physiology.
   - *Continuous capture:* live BLE drops are fine here — rely on the onboard
     FIT record for completeness, sync periodically rather than streaming 24/7.
   - Skin tolerance / rotation for all-day optical wear.
+
+### F5 — Medication tracking + PK concentration model · `idea` · research-first
+
+Log daily medication (user takes amphetamines daily) and model the estimated
+**current blood concentration** over time via pharmacokinetics, then learn how
+concentration correlates with the runner's physiology and performance.
+
+- **Log:** dose (mg), time taken, and **formulation** — this matters a lot:
+  immediate-release vs extended-release vs prodrug (lisdexamfetamine) have very
+  different curves.
+- **PK model:** first-order absorption + elimination; one- vs two-compartment
+  TBD by formulation (research). Estimate plasma concentration C(t) from
+  superimposed doses. Notes for the research pass:
+  - d-amphetamine half-life is on the order of ~10–13 h but is **strongly
+    urine-pH dependent** (acidic urine clears it much faster) — a real source
+    of day-to-day and person-to-person variability.
+  - Extended-release is dominated by absorption kinetics; **lisdexamfetamine is
+    a prodrug** converted to active d-amphetamine by rate-limiting hydrolysis →
+    model as prodrug→active conversion, not a simple bolus.
+  - Population PK gives the curve shape; individual clearance varies (genetics/
+    CYP, urine pH, etc.). **Be honest in the UI: this is a model-based estimate,
+    not a blood measurement.**
+
+- **Why it's valuable here — it's a confounder for almost everything else:**
+  - **Raises resting and exercise HR / BP** → directly biases HR zones (F1) and
+    the master equation (F2). Concentration should be a *covariate* in F2 so the
+    model can separate "the drug raised my HR" from "I'm working harder."
+  - **Suppresses appetite** → skews intake in the F3 energy-balance ledger.
+  - **Disrupts sleep** → interacts with F4 sleep/recovery; timing of last dose
+    vs. sleep onset is learnable from the data.
+  - Once concentration is a known input, the app can *learn the runner's
+    individual response* (HR offset per ng/mL, RPE shift, sleep impact, etc.).
+
+- **Safety note (surface responsibly, not alarmist):** stimulants combined with
+  intense exercise raise cardiovascular load and impair thermoregulation
+  (higher core-temp risk, esp. in heat — ties to the temperature variable in
+  F2). Worth a gentle caution in heat/high-concentration conditions. This is a
+  personal tracking aid, **not medical advice**, and doesn't replace a doctor.
+
+**Open questions:**
+  - Which formulation(s) does the user take? (drives the model choice)
+  - Sensitive health data — storage/privacy handling (same concern as F3 diet).
+  - Can we *calibrate* the personal PK from observed HR response, or only
+    assume population parameters?
